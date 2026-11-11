@@ -42,6 +42,35 @@
     return node;
   }
 
+  function linkify(text) {
+    const fragment = document.createDocumentFragment();
+    const raw = String(text || '');
+    const re = /https?:\/\/[^\s<>"']+/gi;
+    let last = 0;
+    let match;
+
+    while ((match = re.exec(raw))) {
+      let url = match[0];
+      const trailing = url.match(/[.,;:!?)\]]+$/);
+      if (trailing) url = url.slice(0, -trailing[0].length);
+      if (!url || url.length < 10) continue;
+
+      if (match.index > last) {
+        fragment.append(document.createTextNode(raw.slice(last, match.index)));
+      }
+      fragment.append(h('a', {
+        href: url,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        text: url
+      }));
+      last = match.index + url.length;
+    }
+
+    if (last < raw.length) fragment.append(document.createTextNode(raw.slice(last)));
+    return fragment;
+  }
+
   const fmtTime = (iso) => {
     const d = new Date(iso);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -829,7 +858,7 @@
           })
         )
       ),
-      h('div', { class: 'profile-bio', text: person.bio || 'no bio yet.' })
+      h('div', { class: 'profile-bio' }, linkify(person.bio || 'no bio yet.'))
     );
 
     if (opts.edit) {
@@ -871,7 +900,7 @@
           h('div', { class: 'profile-sub', text: person.display_name || '' })
         )
       ),
-      h('div', { class: 'profile-bio', text: person.bio || 'no bio yet. click edit profile to add one.' }),
+      h('div', { class: 'profile-bio' }, linkify(person.bio || 'no bio yet. click edit profile to add one.')),
       h('button', {
         type: 'button',
         class: 'btn tiny wide',
@@ -1041,10 +1070,10 @@
       }),
       isSystem ? null : rankBadge(person),
       isSystem
-        ? h('span', { class: 'body system-body', text: rawBody })
+        ? h('span', { class: 'body system-body' }, linkify(rawBody))
         : onlyImage
           ? h('span', { class: 'body muted', text: 'shared an image' })
-          : h('span', { class: 'body', text: rawBody })
+          : h('span', { class: 'body' }, linkify(rawBody))
     );
 
     const quote = message.reply_snippet
