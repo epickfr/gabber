@@ -1,7 +1,3 @@
-/* ============================================================
-   EPICK CHAT — old-school chat client
-   Vanilla JS + Supabase (auth, Postgres, Realtime)
-   ============================================================ */
 (() => {
   'use strict';
 
@@ -23,7 +19,6 @@
     }
   }
 
-  // ---------- tiny helpers ----------
   const $id = (id) => document.getElementById(id);
 
   function h(tag, props, ...children) {
@@ -57,6 +52,8 @@
   const IMAGE_URL_RE = /(https?:\/\/[^\s<>"']+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\?[^\s<>"']*)?)/i;
 
   const AVATAR_COLORS = ['#0a7d32', '#7a2fbf', '#b8860b', '#c0392b', '#1f6feb', '#a0522d', '#008b8b', '#d2691e'];
+  const AUTH_EMAIL_DOMAIN = '@epick.local';
+  const authEmail = (username) => String(username || '').trim().toLowerCase() + AUTH_EMAIL_DOMAIN;
 
   function avatarNode(person, extraClass) {
     const cls = 'avatar' + (extraClass ? ' ' + extraClass : '');
@@ -138,7 +135,6 @@
 
   const isMobile = () => window.matchMedia('(max-width: 760px)').matches;
 
-  // ---------- state ----------
   function freshState() {
     return {
       session: null,
@@ -168,13 +164,11 @@
       viewingProfile: null,
       uploading: false,
       replyTo: null,
-      hasOwner: false,
       adminUsers: []
     };
   }
   let state = freshState();
 
-  // ---------- dom ----------
   const ui = {
     app: $id('app-window'),
     auth: $id('auth-overlay'),
@@ -183,11 +177,10 @@
     authTabs: $id('auth-tabs'),
     loginForm: $id('login-form'),
     registerForm: $id('register-form'),
-    loginEmail: $id('login-email'),
+    loginUsername: $id('login-username'),
     loginPassword: $id('login-password'),
     registerUsername: $id('register-username'),
     registerDisplay: $id('register-display'),
-    registerEmail: $id('register-email'),
     registerPassword: $id('register-password'),
     authError: $id('auth-error'),
     appBody: $id('app-body'),
@@ -239,6 +232,8 @@
     replyBar: $id('reply-bar'),
     replyText: $id('reply-text'),
     replyCancel: $id('reply-cancel'),
+    banNotice: $id('ban-notice'),
+    composerSubmit: $id('composer-submit'),
     adminBtn: $id('admin-btn'),
     adminModal: $id('admin-modal'),
     adminClose: $id('admin-close'),
@@ -250,7 +245,6 @@
     toast: $id('toast')
   };
 
-  // ---------- auth error helpers ----------
   function setAuthError(message, kind) {
     ui.authError.textContent = message || '';
     ui.authError.hidden = !message;
@@ -259,9 +253,11 @@
 
   function friendlyAuthError(error) {
     const message = (error && error.message) || 'Something went wrong.';
-    if (/invalid login credentials/i.test(message)) return 'Wrong email or password.';
-    if (/email not confirmed/i.test(message)) return 'Confirm your email first, then sign in.';
-    if (/user already registered/i.test(message)) return 'That email is already registered. Try signing in.';
+    if (/invalid login credentials/i.test(message)) return 'Wrong username or password.';
+    if (/email not confirmed/i.test(message)) {
+      return 'Sign-in is not enabled yet. Turn off Confirm email in Supabase: Authentication -> Providers -> Email.';
+    }
+    if (/user already registered/i.test(message)) return 'That username is already registered. Try signing in.';
     if (/password should be at least/i.test(message)) return 'Password must be at least 6 characters.';
     if (/username is already taken/i.test(message)) return 'That username is already taken.';
     if (/rate limit/i.test(message)) return 'Too many attempts. Wait a minute and try again.';
@@ -273,7 +269,6 @@
     if (button) button.disabled = busy;
   }
 
-  // ---------- toast ----------
   function toast(message) {
     ui.toast.textContent = message;
     ui.toast.hidden = false;
@@ -281,7 +276,6 @@
     state.toastTimer = setTimeout(() => { ui.toast.hidden = true; }, 3200);
   }
 
-  // ---------- boot ----------
   function init() {
     bindAuth();
     bindApp();
@@ -324,7 +318,6 @@
 
     try {
       await ensureProfile();
-      await checkOwner();
       await loadFriends();
       await loadRooms();
       await loadThreads();
@@ -347,7 +340,7 @@
       ui.app.hidden = true;
       state.session = null;
       state.me = null;
-      try { await sb.auth.signOut(); } catch (_) { /* ignore */ }
+      try { await sb.auth.signOut(); } catch (_) {  }
     } finally {
       state.booting = false;
     }
@@ -365,6 +358,10 @@
     ui.profileModal.hidden = true;
     ui.adminModal.hidden = true;
     ui.replyBar.hidden = true;
+    ui.banNotice.hidden = true;
+    ui.messageInput.disabled = false;
+    ui.imageBtn.disabled = false;
+    ui.composerSubmit.disabled = false;
     ui.messages.replaceChildren();
     ui.memberList.replaceChildren();
     ui.friends.replaceChildren();
@@ -395,9 +392,8 @@
       return;
     }
 
-    // Trigger normally creates the profile. This is a fallback.
     const meta = state.me.user_metadata || {};
-    let base = String(meta.username || (state.me.email || 'user').split('@')[0])
+    let base = String(meta.username || 'user')
       .toLowerCase()
       .replace(/[^a-z0-9_]/g, '');
     if (base.length < 3) base = 'user' + Math.floor(100 + Math.random() * 900);
@@ -426,7 +422,6 @@
     throw new Error('Could not create a profile. Please try again.');
   }
 
-  // ---------- auth events ----------
   function bindAuth() {
     ui.authTabs.addEventListener('click', (event) => {
       const tab = event.target.closest('[data-tab]');
@@ -444,8 +439,10 @@
       event.preventDefault();
       setAuthError('');
       setBusy(ui.loginForm, true);
+      const id = ui.loginUsername.value.trim().toLowerCase();
+      const email = id.indexOf('@') === -1 ? authEmail(id) : id;
       const { error } = await sb.auth.signInWithPassword({
-        email: ui.loginEmail.value.trim(),
+        email,
         password: ui.loginPassword.value
       });
       setBusy(ui.loginForm, false);
@@ -458,7 +455,6 @@
 
       const username = ui.registerUsername.value.trim().toLowerCase();
       const displayName = ui.registerDisplay.value.trim();
-      const email = ui.registerEmail.value.trim();
       const password = ui.registerPassword.value;
 
       if (!/^[a-z0-9_]{3,20}$/.test(username)) {
@@ -472,7 +468,6 @@
 
       setBusy(ui.registerForm, true);
 
-      // Friendly pre-check so a taken username doesn't surface as a generic DB error.
       const { data: available, error: checkError } = await sb.rpc('username_available', {
         p_username: username
       });
@@ -483,12 +478,12 @@
         return;
       }
 
+      const email = authEmail(username);
       const { data, error } = await sb.auth.signUp({
         email,
         password,
         options: {
-          data: { username, display_name: displayName || username },
-          emailRedirectTo: window.location.origin + window.location.pathname
+          data: { username, display_name: displayName || username }
         }
       });
 
@@ -499,8 +494,6 @@
       }
 
       if (!data.session) {
-        // Email confirmation may still be switched on in the Supabase project.
-        // Try to sign in immediately so a new account can start chatting.
         const { data: signed, error: signInError } = await sb.auth.signInWithPassword({
           email,
           password
@@ -512,8 +505,8 @@
         }
 
         setAuthError(
-          'Account created, but this project still requires email confirmation. ' +
-          'Turn it off in Supabase: Authentication -> Providers -> Email -> Confirm email.',
+          'Account created, but sign-in is blocked. Turn off Confirm email in Supabase: ' +
+          'Authentication -> Providers -> Email -> Confirm email.',
           'ok'
         );
         ui.registerForm.reset();
@@ -523,7 +516,6 @@
     });
   }
 
-  // ---------- app events ----------
   function bindApp() {
     ui.logoutBtn.addEventListener('click', async () => {
       await sb.auth.signOut();
@@ -532,7 +524,6 @@
     ui.editProfileBtn.addEventListener('click', openProfileEditor);
     ui.myCard.addEventListener('click', (event) => {
       if (event.target.closest('[data-action="edit-profile"]')) openProfileEditor();
-      if (event.target.closest('[data-action="claim-owner"]')) claimOwner();
     });
 
     ui.profileClose.addEventListener('click', closeProfileEditor);
@@ -630,6 +621,14 @@
       const select = event.target.closest('[data-rank-user]');
       if (select) changeRank(select.dataset.rankUser, select.value);
     });
+    ui.adminUsers.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-ban-user]');
+      if (!button) return;
+      const person = state.adminUsers.find((item) => item.username === button.dataset.banUser);
+      if (!person) return;
+      if (person.banned) unbanUser(person.username);
+      else banUser(person.username);
+    });
     ui.adminRooms.addEventListener('click', (event) => {
       const button = event.target.closest('[data-admin-room]');
       if (button) adminDeleteRoom(button.dataset.adminRoom);
@@ -721,7 +720,6 @@
     document.title = total ? `(${total}) Epick Chat` : 'Epick Chat - free web chat';
   }
 
-  // ---------- data loading ----------
   async function loadFriends() {
     const { data: links, error } = await sb.from('friendships').select('*');
     if (error) throw error;
@@ -805,7 +803,6 @@
     for (const person of state.members) state.people.set(person.id, person);
   }
 
-  // ---------- rendering ----------
   function renderAll() {
     renderMe();
     renderRooms();
@@ -883,16 +880,7 @@
       })
     );
 
-    updateAdminButton();
-
-    if (!state.hasOwner && rankOf(person) === 'member') {
-      ui.myCard.append(h('button', {
-        type: 'button',
-        class: 'btn tiny wide',
-        'data-action': 'claim-owner',
-        text: 'claim ownership'
-      }));
-    }
+    applyBanState();
   }
 
   function roomItem(room) {
@@ -1035,7 +1023,7 @@
 
   function messageNode(message) {
     const rawBody = message.body || '';
-    const isSystem = !message.sender || rawBody.indexOf('[ANNOUNCEMENT]') === 0;
+    const isSystem = !message.sender;
     const person = isSystem
       ? { username: 'system', color: '#a8001e' }
       : (message.person || { username: 'unknown', color: '#000000' });
@@ -1178,7 +1166,6 @@
     ui.statusUser.textContent = state.profile ? state.profile.username : 'guest';
   }
 
-  // ---------- conversations ----------
   async function restoreLastConversation() {
     const last = localStorage.getItem('epickchat:last');
 
@@ -1348,7 +1335,7 @@
 
   function unsubscribeConversation() {
     if (state.convChannel) {
-      try { sb.removeChannel(state.convChannel); } catch (_) { /* ignore */ }
+      try { sb.removeChannel(state.convChannel); } catch (_) {  }
       state.convChannel = null;
     }
   }
@@ -1415,6 +1402,10 @@
   async function sendBody(body) {
     if (!state.current) return false;
     if (!body) return false;
+    if (isBanned()) {
+      toast('You are banned from chatting.');
+      return false;
+    }
     if (body.length > 2000) {
       toast('Message is too long.');
       return false;
@@ -1449,6 +1440,10 @@
 
   async function sendMessage(event) {
     event.preventDefault();
+    if (isBanned()) {
+      toast('You are banned from chatting.');
+      return;
+    }
     const body = ui.messageInput.value.trim();
     if (!body || !state.current) return;
 
@@ -1465,6 +1460,10 @@
 
   async function sendImageFile(file) {
     if (!file || !state.current) return;
+    if (isBanned()) {
+      toast('You are banned from chatting.');
+      return;
+    }
     if (state.uploading) {
       toast('Still uploading, hold on.');
       return;
@@ -1490,7 +1489,6 @@
     if (!isMobile()) ui.messageInput.focus();
   }
 
-  // ---------- unread badges ----------
   function maybeUnread(table, row) {
     if (!row) return;
 
@@ -1514,7 +1512,6 @@
     updateTitle();
   }
 
-  // ---------- presence ----------
   function startPresence() {
     if (state.presenceChannel) return;
 
@@ -1549,7 +1546,6 @@
     state.presenceChannel = channel;
   }
 
-  // ---------- global realtime ----------
   const reloadFriendsSoon = debounce(async () => {
     if (!state.session) return;
     try {
@@ -1598,8 +1594,11 @@
         if (!person || !person.id) return;
         state.people.set(person.id, person);
         if (person.id === state.me.id) {
+          const wasBanned = Boolean(state.profile && state.profile.banned);
           state.profile = person;
           renderMe();
+          if (!wasBanned && person.banned) toast('You have been banned from chatting.');
+          if (wasBanned && !person.banned) toast('Your ban has been lifted.');
         }
         renderFriends();
         renderMembers();
@@ -1624,7 +1623,6 @@
     state.globalChannel = channel;
   }
 
-  // ---------- friends ----------
   async function searchPeople(query) {
     if (!query || query.length < 2) {
       toast('Type at least 2 characters.');
@@ -1715,7 +1713,6 @@
     renderRequests();
   }
 
-  // ---------- rooms ----------
   async function openNewRoomModal() {
     const name = window.prompt('Room name (1-32 characters):');
     if (name === null) return;
@@ -1864,23 +1861,26 @@
     if (lobby) await openRoom(lobby);
   }
 
-  // ---------- ranks ----------
   const STAFF_RANKS = ['owner', 'co-owner', 'admin', 'mod'];
 
   function rankOf(person) {
     return (person && person.rank) || 'member';
   }
 
+  function isBanned() {
+    return Boolean(state.profile && state.profile.banned);
+  }
+
   function isStaff() {
-    return STAFF_RANKS.indexOf(rankOf(state.profile)) !== -1;
+    return !isBanned() && STAFF_RANKS.indexOf(rankOf(state.profile)) !== -1;
   }
 
   function isAdmin() {
-    return ['owner', 'co-owner', 'admin'].indexOf(rankOf(state.profile)) !== -1;
+    return !isBanned() && ['owner', 'co-owner', 'admin'].indexOf(rankOf(state.profile)) !== -1;
   }
 
   function canManageRanks() {
-    return ['owner', 'co-owner'].indexOf(rankOf(state.profile)) !== -1;
+    return !isBanned() && ['owner', 'co-owner'].indexOf(rankOf(state.profile)) !== -1;
   }
 
   function rankBadge(person) {
@@ -1889,7 +1889,6 @@
     return h('span', { class: 'rank rank-' + rank, text: '(' + rank + ')' });
   }
 
-  // ---------- profile editor ----------
   function openProfileEditor() {
     const person = state.profile;
     if (!person) return;
@@ -2032,51 +2031,34 @@
     toast('Profile saved.');
   }
 
-  async function refreshProfile() {
-    const { data } = await sb
-      .from('profiles')
-      .select('*')
-      .eq('id', state.me.id)
-      .maybeSingle();
-    if (data) {
-      state.profile = data;
-      state.people.set(data.id, data);
-    }
-  }
-
-  async function checkOwner() {
-    const { data, error } = await sb
-      .from('profiles')
-      .select('id')
-      .eq('rank', 'owner')
-      .limit(1);
-    if (error) return;
-    state.hasOwner = Array.isArray(data) && data.length > 0;
-  }
-
   function updateAdminButton() {
     ui.adminBtn.hidden = !isStaff();
   }
 
-  async function claimOwner() {
-    const { data, error } = await sb.rpc('claim_owner');
-    if (error) {
-      toast(error.message);
-      return;
+  function applyBanState() {
+    const banned = isBanned();
+    const reason = state.profile && state.profile.ban_reason;
+
+    ui.banNotice.hidden = !banned;
+    ui.banNotice.textContent = banned
+      ? 'Your account is banned from chatting.' + (reason ? ' Reason: ' + reason : '')
+      : '';
+
+    ui.messageInput.disabled = banned;
+    ui.imageBtn.disabled = banned;
+    ui.composerSubmit.disabled = banned;
+
+    if (banned) {
+      state.replyTo = null;
+      renderReplyBar();
+      ui.messageInput.placeholder = 'you are banned from chatting';
+    } else {
+      ui.messageInput.placeholder = 'type a message, /help for commands';
     }
-    if (!data) {
-      toast('Someone already claimed ownership.');
-      await checkOwner();
-      renderMe();
-      return;
-    }
-    toast('You are now the owner.');
-    await checkOwner();
-    await refreshProfile();
-    renderAll();
+
+    updateAdminButton();
   }
 
-  // ---------- message actions ----------
   function canDeleteMessage(message) {
     if (!message) return false;
     if (message.sender && message.sender === state.me.id) return true;
@@ -2133,7 +2115,6 @@
     if (state.messages.length !== before) renderMessages();
   }
 
-  // ---------- commands ----------
   const EIGHT_BALL = [
     'It is certain.', 'Without a doubt.', 'Yes, definitely.', 'Most likely.',
     'Ask again later.', 'Cannot predict now.', 'Do not count on it.',
@@ -2196,7 +2177,36 @@
     }
 
     if (name === 'help') {
-      toast('/me /shrug /tableflip /unflip /roll /coinflip /8ball /help');
+      toast('/me /shrug /tableflip /unflip /roll /coinflip /8ball /help' +
+        (isStaff() ? ' /purge /topic' : '') +
+        (isAdmin() ? ' /announce /ban /unban' : ''));
+      return true;
+    }
+
+    if (name === 'ban') {
+      if (!isAdmin()) { toast('Admins only.'); return true; }
+      const bits = rest.split(/\s+/).filter(Boolean);
+      const target = bits.shift();
+      if (!target) { toast('usage: /ban username reason'); return true; }
+      const reason = bits.join(' ');
+      if (!window.confirm('Ban ' + target + '?')) return true;
+      const { error } = await sb.rpc('ban_user', {
+        p_username: target,
+        p_reason: reason
+      });
+      if (error) { toast(error.message); return true; }
+      toast(target + ' banned.');
+      await loadAdminUsers();
+      return true;
+    }
+
+    if (name === 'unban') {
+      if (!isAdmin()) { toast('Admins only.'); return true; }
+      if (!rest) { toast('usage: /unban username'); return true; }
+      const { error } = await sb.rpc('unban_user', { p_username: rest });
+      if (error) { toast(error.message); return true; }
+      toast(rest + ' unbanned.');
+      await loadAdminUsers();
       return true;
     }
 
@@ -2259,7 +2269,6 @@
     if (command) await runCommand(command);
   }
 
-  // ---------- admin panel ----------
   function openAdminPanel() {
     if (!isStaff()) {
       toast('Staff only.');
@@ -2278,7 +2287,7 @@
   async function loadAdminUsers() {
     const { data, error } = await sb
       .from('profiles')
-      .select('id, username, display_name, rank, color, avatar_url')
+      .select('id, username, display_name, rank, color, avatar_url, banned, ban_reason')
       .order('username', { ascending: true })
       .limit(200);
 
@@ -2310,25 +2319,47 @@
     }
 
     const allowed = canManageRanks();
+    const myRank = rankOf(state.profile);
     const ranks = ['owner', 'co-owner', 'admin', 'mod', 'member'];
 
     for (const person of state.adminUsers) {
       const select = h('select', { class: 'rank-select', 'data-rank-user': person.id });
       for (const rank of ranks) {
+        const blocked = myRank === 'co-owner' && (rank === 'owner' || rank === 'co-owner');
         select.append(h('option', {
           value: rank,
           text: rank,
-          selected: rankOf(person) === rank ? 'selected' : null
+          selected: rankOf(person) === rank ? 'selected' : null,
+          disabled: blocked ? 'disabled' : null
         }));
       }
       select.disabled = !allowed || person.id === state.me.id;
 
-      ui.adminUsers.append(h('div', { class: 'admin-user' },
+      const row = h('div', { class: 'admin-user' },
         avatarNode(person, 'tiny'),
         h('span', { class: 'admin-name', text: person.username }),
         rankBadge(person),
+        person.banned ? h('span', { class: 'ban-mark', text: 'banned' }) : null,
         select
-      ));
+      );
+
+      const targetRank = rankOf(person);
+      const canBanTarget = isAdmin() &&
+        person.id !== state.me.id &&
+        targetRank !== 'owner' &&
+        targetRank !== 'co-owner' &&
+        !(targetRank === 'admin' && myRank !== 'owner' && myRank !== 'co-owner');
+
+      if (canBanTarget) {
+        row.append(h('button', {
+          type: 'button',
+          class: 'btn micro' + (person.banned ? '' : ' danger'),
+          'data-ban-user': person.username,
+          text: person.banned ? 'unban' : 'ban'
+        }));
+      }
+
+      ui.adminUsers.append(row);
     }
   }
 
@@ -2374,6 +2405,32 @@
     renderAll();
   }
 
+  async function banUser(username) {
+    const reason = window.prompt('Reason for banning ' + username + '?', '');
+    if (reason === null) return;
+
+    const { error } = await sb.rpc('ban_user', {
+      p_username: username,
+      p_reason: reason
+    });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+    toast(username + ' banned.');
+    await loadAdminUsers();
+  }
+
+  async function unbanUser(username) {
+    const { error } = await sb.rpc('unban_user', { p_username: username });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+    toast(username + ' unbanned.');
+    await loadAdminUsers();
+  }
+
   async function adminDeleteRoom(roomId) {
     if (!window.confirm('Delete this room and all of its messages?')) return;
     const { error } = await sb.rpc('admin_delete_room', { p_room: roomId });
@@ -2416,7 +2473,6 @@
     toast('Announcement sent.');
   }
 
-  // ---------- misc ----------
   async function copyText(text) {
     if (!text) return;
     try {

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2300" height="1080" viewBox="0 0 2300 1080">
+  <defs>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#032b33"/>
+      <stop offset="1" stop-color="#0b7a86"/>
+    </linearGradient>
+  </defs>
+  <rect width="2300" height="1080" fill="url(#sea)"/>
+  <g fill="none" stroke="#7fe3e0" stroke-width="10" opacity="0.45">
+    <path d="M0 760 Q 190 680 380 760 T 760 760 T 1140 760 T 1520 760 T 1900 760 T 2280 760"/>
+    <path d="M0 850 Q 190 770 380 850 T 760 850 T 1140 850 T 1520 850 T 1900 850 T 2280 850"/>
+    <path d="M0 940 Q 190 860 380 940 T 760 940 T 1140 940 T 1520 940 T 1900 940 T 2280 940"/>
+  </g>
+  <text x="120" y="300" font-family="Courier New, monospace" font-size="80" fill="#b8fffb" opacity="0.85">TEAL WAVES</text>
+</svg>

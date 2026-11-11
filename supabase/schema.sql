@@ -1,14 +1,4 @@
--- ============================================================
--- EPICK CHAT database schema for Supabase
--- Run this whole file once in: Supabase Dashboard -> SQL Editor
--- It is safe to run again (idempotent-ish).
--- ============================================================
-
 create extension if not exists pgcrypto;
-
--- ------------------------------------------------------------
--- TABLES
--- ------------------------------------------------------------
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -19,15 +9,22 @@ create table if not exists public.profiles (
   avatar_url text,
   banner_url text,
   rank text not null default 'member',
+  banned boolean not null default false,
+  ban_reason text,
+  banned_at timestamptz,
+  banned_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
 create unique index if not exists profiles_username_lower_idx on public.profiles (lower(username));
 
--- Safe to run on an existing install: add the newer profile columns if missing.
 alter table public.profiles add column if not exists bio text default '';
 alter table public.profiles add column if not exists avatar_url text;
 alter table public.profiles add column if not exists banner_url text;
 alter table public.profiles add column if not exists rank text not null default 'member';
+alter table public.profiles add column if not exists banned boolean not null default false;
+alter table public.profiles add column if not exists ban_reason text;
+alter table public.profiles add column if not exists banned_at timestamptz;
+alter table public.profiles add column if not exists banned_by uuid references public.profiles(id) on delete set null;
 
 create table if not exists public.friendships (
   id uuid primary key default gen_random_uuid(),
@@ -95,17 +92,9 @@ create index if not exists dm_messages_thread_created_idx on public.dm_messages 
 create index if not exists room_members_user_idx on public.room_members (user_id);
 create index if not exists friendships_addressee_idx on public.friendships (addressee);
 
--- ------------------------------------------------------------
--- SEED: the #lobby room everyone lands in
--- ------------------------------------------------------------
-
 insert into public.rooms (id, name, topic, is_private, owner)
 values ('00000000-0000-0000-0000-000000000001', 'lobby', 'Welcome to Epick Chat. Be excellent to each other.', false, null)
 on conflict (id) do nothing;
-
--- ------------------------------------------------------------
--- NEW USER TRIGGER: create profile + join lobby
--- ------------------------------------------------------------
 
 create or replace function public.pick_color()
 returns text
@@ -154,10 +143,6 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
-
--- ------------------------------------------------------------
--- HELPER FUNCTIONS (security definer avoids RLS recursion)
--- ------------------------------------------------------------
 
 create or replace function public.is_room_member(rid uuid)
 returns boolean
@@ -220,14 +205,13 @@ as $$
   );
 $$;
 
--- Staff = can moderate messages. Admin = can also announce and delete rooms.
 create or replace function public.is_staff()
 returns boolean
 language sql stable security definer set search_path = public
 as $$
   select exists (
     select 1 from public.profiles
-    where id = auth.uid() and rank in ('owner', 'co-owner', 'admin', 'mod')
+    where id = auth.uid() and rank in ('owner', 'co-owner', 'admin', 'mod') and not banned
   );
 $$;
 
@@ -237,11 +221,20 @@ language sql stable security definer set search_path = public
 as $$
   select exists (
     select 1 from public.profiles
-    where id = auth.uid() and rank in ('owner', 'co-owner', 'admin')
+    where id = auth.uid() and rank in ('owner', 'co-owner', 'admin') and not banned
   );
 $$;
 
--- Public username check for the registration form (works before sign-in).
+create or replace function public.is_banned()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select coalesce(
+    (select banned from public.profiles where id = auth.uid()),
+    false
+  );
+$$;
+
 create or replace function public.username_available(p_username text)
 returns boolean
 language sql stable security definer set search_path = public
@@ -254,10 +247,6 @@ $$;
 
 grant execute on function public.username_available(text) to anon, authenticated;
 
--- ------------------------------------------------------------
--- ROW LEVEL SECURITY
--- ------------------------------------------------------------
-
 alter table public.profiles enable row level security;
 alter table public.friendships enable row level security;
 alter table public.rooms enable row level security;
@@ -266,7 +255,6 @@ alter table public.messages enable row level security;
 alter table public.dm_threads enable row level security;
 alter table public.dm_messages enable row level security;
 
--- profiles: any signed-in user can look people up; you may edit yourself
 drop policy if exists "profiles_select" on public.profiles;
 create policy "profiles_select" on public.profiles
   for select to authenticated using (true);
@@ -279,13 +267,10 @@ drop policy if exists "profiles_update_self" on public.profiles;
 create policy "profiles_update_self" on public.profiles
   for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
 
--- Ranks are server-controlled. Column-level grants stop a user from
--- writing rank (or id) directly while still allowing profile edits.
 revoke insert, update on public.profiles from authenticated;
 grant insert (id, username, display_name, color) on public.profiles to authenticated;
 grant update (display_name, bio, color, avatar_url, banner_url) on public.profiles to authenticated;
 
--- friendships: you can see your own requests, send them, accept them, delete them
 drop policy if exists "friendships_select_own" on public.friendships;
 create policy "friendships_select_own" on public.friendships
   for select to authenticated
@@ -294,19 +279,20 @@ create policy "friendships_select_own" on public.friendships
 drop policy if exists "friendships_insert_own" on public.friendships;
 create policy "friendships_insert_own" on public.friendships
   for insert to authenticated
-  with check (requester = auth.uid() and addressee <> auth.uid() and status = 'pending');
+  with check (
+    requester = auth.uid()
+    and addressee <> auth.uid()
+    and status = 'pending'
+    and not public.is_banned()
+  );
 
 drop policy if exists "friendships_update_accept" on public.friendships;
--- Accepting a request goes through accept_friend_request() below, so there is
--- deliberately no direct UPDATE policy here. This prevents someone from
--- rewriting the requester/addressee columns of a pending request.
 
 drop policy if exists "friendships_delete_own" on public.friendships;
 create policy "friendships_delete_own" on public.friendships
   for delete to authenticated
   using (requester = auth.uid() or addressee = auth.uid());
 
--- rooms: public rooms are visible to everyone, private rooms only to members/owner
 drop policy if exists "rooms_select_visible" on public.rooms;
 create policy "rooms_select_visible" on public.rooms
   for select to authenticated
@@ -315,7 +301,7 @@ create policy "rooms_select_visible" on public.rooms
 drop policy if exists "rooms_insert_own" on public.rooms;
 create policy "rooms_insert_own" on public.rooms
   for insert to authenticated
-  with check (owner = auth.uid());
+  with check (owner = auth.uid() and not public.is_banned());
 
 drop policy if exists "rooms_update_own" on public.rooms;
 create policy "rooms_update_own" on public.rooms
@@ -326,7 +312,6 @@ drop policy if exists "rooms_delete_own" on public.rooms;
 create policy "rooms_delete_own" on public.rooms
   for delete to authenticated using (owner = auth.uid());
 
--- room membership
 drop policy if exists "room_members_select" on public.room_members;
 create policy "room_members_select" on public.room_members
   for select to authenticated
@@ -344,6 +329,7 @@ create policy "room_members_insert" on public.room_members
   for insert to authenticated
   with check (
     user_id = auth.uid()
+    and not public.is_banned()
     and exists (
       select 1 from public.rooms r
       where r.id = room_id and (not r.is_private or r.owner = auth.uid())
@@ -354,7 +340,6 @@ drop policy if exists "room_members_delete" on public.room_members;
 create policy "room_members_delete" on public.room_members
   for delete to authenticated using (user_id = auth.uid());
 
--- room messages: readable in visible rooms, writable if you joined
 drop policy if exists "messages_select" on public.messages;
 create policy "messages_select" on public.messages
   for select to authenticated using (public.can_read_room(room_id));
@@ -362,15 +347,17 @@ create policy "messages_select" on public.messages
 drop policy if exists "messages_insert" on public.messages;
 create policy "messages_insert" on public.messages
   for insert to authenticated
-  with check (sender = auth.uid() and public.can_post_room(room_id));
+  with check (
+    sender = auth.uid()
+    and not public.is_banned()
+    and public.can_post_room(room_id)
+  );
 
--- You may delete your own room messages; staff may delete anyone's.
 drop policy if exists "messages_delete" on public.messages;
 create policy "messages_delete" on public.messages
   for delete to authenticated
   using (sender = auth.uid() or public.is_staff());
 
--- direct messages
 drop policy if exists "dm_threads_select" on public.dm_threads;
 create policy "dm_threads_select" on public.dm_threads
   for select to authenticated
@@ -382,10 +369,10 @@ create policy "dm_threads_insert" on public.dm_threads
   with check (
     (user_a = auth.uid() or user_b = auth.uid())
     and public.are_friends(user_a, user_b)
+    and not public.is_banned()
   );
 
 drop policy if exists "dm_threads_delete" on public.dm_threads;
--- No client-side delete policy: DM history is not destroyed by one participant.
 
 drop policy if exists "dm_messages_select" on public.dm_messages;
 create policy "dm_messages_select" on public.dm_messages
@@ -394,17 +381,16 @@ create policy "dm_messages_select" on public.dm_messages
 drop policy if exists "dm_messages_insert" on public.dm_messages;
 create policy "dm_messages_insert" on public.dm_messages
   for insert to authenticated
-  with check (sender = auth.uid() and public.in_dm_thread(thread_id));
+  with check (
+    sender = auth.uid()
+    and not public.is_banned()
+    and public.in_dm_thread(thread_id)
+  );
 
--- In DMs you may only delete your own messages.
 drop policy if exists "dm_messages_delete" on public.dm_messages;
 create policy "dm_messages_delete" on public.dm_messages
   for delete to authenticated
   using (sender = auth.uid());
-
--- ------------------------------------------------------------
--- RPCs
--- ------------------------------------------------------------
 
 create or replace function public.accept_friend_request(p_id uuid)
 returns void
@@ -414,6 +400,7 @@ set search_path = public
 as $$
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if public.is_banned() then raise exception 'You are banned'; end if;
 
   update public.friendships
   set status = 'accepted'
@@ -440,6 +427,7 @@ declare
   code text;
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if public.is_banned() then raise exception 'You are banned'; end if;
 
   p_name := trim(p_name);
   if p_name is null or length(p_name) = 0 then raise exception 'Room name is required'; end if;
@@ -468,6 +456,7 @@ declare
   rid uuid;
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if public.is_banned() then raise exception 'You are banned'; end if;
 
   select id into rid
   from public.rooms
@@ -497,6 +486,7 @@ declare
   tid uuid;
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if public.is_banned() then raise exception 'You are banned'; end if;
   if p_other = auth.uid() then raise exception 'You cannot DM yourself'; end if;
   if not public.are_friends(auth.uid(), p_other) then raise exception 'You must be friends first'; end if;
 
@@ -515,27 +505,7 @@ begin
 end;
 $$;
 
--- ------------------------------------------------------------
--- RANKS + ADMIN RPCs
--- ------------------------------------------------------------
-
--- Bootstrap: the first person to call this becomes owner, if no owner exists.
-create or replace function public.claim_owner()
-returns boolean
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if auth.uid() is null then raise exception 'Not signed in'; end if;
-  if exists (select 1 from public.profiles where rank = 'owner') then
-    return false;
-  end if;
-  update public.profiles set rank = 'owner' where id = auth.uid();
-  return true;
-end;
-$$;
-grant execute on function public.claim_owner() to authenticated;
+drop function if exists public.claim_owner();
 
 create or replace function public.set_rank(p_user uuid, p_rank text)
 returns void
@@ -548,8 +518,8 @@ declare
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
 
-  select rank into my_rank from public.profiles where id = auth.uid();
-  if my_rank not in ('owner', 'co-owner') then
+  select rank into my_rank from public.profiles where id = auth.uid() and not banned;
+  if my_rank is null or my_rank not in ('owner', 'co-owner') then
     raise exception 'Only the owner or a co-owner can change ranks';
   end if;
   if p_rank is null or p_rank not in ('owner', 'co-owner', 'admin', 'mod', 'member') then
@@ -566,6 +536,62 @@ begin
 end;
 $$;
 grant execute on function public.set_rank(uuid, text) to authenticated;
+
+create or replace function public.ban_user(p_username text, p_reason text default '')
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target public.profiles%rowtype;
+  my_rank text;
+begin
+  if not public.is_admin() then raise exception 'Admins only'; end if;
+
+  select * into target from public.profiles
+  where lower(username) = lower(trim(p_username));
+  if not found then raise exception 'No such user'; end if;
+  if target.id = auth.uid() then raise exception 'You cannot ban yourself'; end if;
+  if target.rank in ('owner', 'co-owner') then
+    raise exception 'You cannot ban an owner or co-owner';
+  end if;
+
+  select rank into my_rank from public.profiles where id = auth.uid();
+  if target.rank = 'admin' and my_rank not in ('owner', 'co-owner') then
+    raise exception 'Only the owner or co-owner can ban an admin';
+  end if;
+
+  update public.profiles
+  set banned = true,
+      ban_reason = left(coalesce(p_reason, ''), 200),
+      banned_at = now(),
+      banned_by = auth.uid()
+  where id = target.id;
+end;
+$$;
+grant execute on function public.ban_user(text, text) to authenticated;
+
+create or replace function public.unban_user(p_username text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only'; end if;
+
+  update public.profiles
+  set banned = false,
+      ban_reason = null,
+      banned_at = null,
+      banned_by = null
+  where lower(username) = lower(trim(p_username));
+
+  if not found then raise exception 'No such user'; end if;
+end;
+$$;
+grant execute on function public.unban_user(text) to authenticated;
 
 create or replace function public.purge_room(p_room uuid, p_count integer)
 returns integer
@@ -606,7 +632,10 @@ as $$
 begin
   if not (
     public.is_staff()
-    or exists (select 1 from public.rooms where id = p_room and owner = auth.uid())
+    or (
+      not public.is_banned()
+      and exists (select 1 from public.rooms where id = p_room and owner = auth.uid())
+    )
   ) then
     raise exception 'Not allowed';
   end if;
@@ -649,10 +678,6 @@ end;
 $$;
 grant execute on function public.admin_delete_room(uuid) to authenticated;
 
--- ------------------------------------------------------------
--- REALTIME
--- ------------------------------------------------------------
-
 alter table public.messages replica identity full;
 alter table public.dm_messages replica identity full;
 alter table public.friendships replica identity full;
@@ -678,14 +703,6 @@ begin
   begin alter publication supabase_realtime add table public.profiles; exception when duplicate_object then null; end;
 end;
 $$;
-
--- ------------------------------------------------------------
--- STORAGE: avatars, banners, and chat images
--- One public bucket, three folders:
---   avatars/<user-id>/...   banners/<user-id>/...   chat/<user-id>/...
--- Public read (so images load in chat), but a user may only write
--- inside their own <user-id> folder.
--- ------------------------------------------------------------
 
 insert into storage.buckets (id, name, public)
 values ('epick', 'epick', true)
@@ -714,7 +731,3 @@ drop policy if exists "epick bucket delete" on storage.objects;
 create policy "epick bucket delete" on storage.objects
   for delete to authenticated
   using (bucket_id = 'epick' and (storage.foldername(name))[2] = auth.uid()::text);
-
--- ------------------------------------------------------------
--- DONE. New signups automatically get a profile and join #lobby.
--- ------------------------------------------------------------

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2300" height="1080" viewBox="0 0 2300 1080">
+  <defs>
+    <linearGradient id="air" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9fd3e8"/>
+      <stop offset="1" stop-color="#e8f4d8"/>
+    </linearGradient>
+  </defs>
+  <rect width="2300" height="1080" fill="url(#air)"/>
+  <path d="M0 760 Q 350 560 700 720 T 1400 680 T 2300 760 V1080 H0Z" fill="#3f7d3a"/>
+  <path d="M0 880 Q 420 700 900 850 T 1700 820 T 2300 900 V1080 H0Z" fill="#2c5c2a"/>
+  <path d="M0 980 Q 500 850 1000 960 T 1900 940 T 2300 1000 V1080 H0Z" fill="#1d3f1d"/>
+  <circle cx="1880" cy="240" r="110" fill="#fff6c8"/>
+  <text x="120" y="300" font-family="Verdana, sans-serif" font-size="72" font-weight="bold" fill="#1d3f1d" opacity="0.85">FOREST HILLS</text>
+</svg>

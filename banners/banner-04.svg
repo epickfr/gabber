@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2300" height="1080" viewBox="0 0 2300 1080">
+  <defs>
+    <linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#12002e"/>
+      <stop offset="0.6" stop-color="#5a1a86"/>
+      <stop offset="1" stop-color="#ff5f9e"/>
+    </linearGradient>
+    <pattern id="floor" width="90" height="90" patternUnits="userSpaceOnUse">
+      <path d="M90 0H0V90" fill="none" stroke="#ff8fc4" stroke-width="2" opacity="0.35"/>
+    </pattern>
+  </defs>
+  <rect width="2300" height="1080" fill="url(#dusk)"/>
+  <circle cx="1150" cy="520" r="260" fill="#ffd36e"/>
+  <rect x="0" y="700" width="2300" height="380" fill="#12002e" opacity="0.55"/>
+  <rect x="0" y="700" width="2300" height="380" fill="url(#floor)"/>
+  <g stroke="#2b0b4a" stroke-width="12">
+    <line x1="1150" y1="700" x2="1150" y2="1080"/>
+    <line x1="900" y1="700" x2="700" y2="1080"/>
+    <line x1="1400" y1="700" x2="1600" y2="1080"/>
+    <line x1="650" y1="700" x2="250" y2="1080"/>
+    <line x1="1650" y1="700" x2="2050" y2="1080"/>
+  </g>
+  <text x="120" y="960" font-family="Verdana, sans-serif" font-size="64" font-weight="bold" fill="#ffd9ec" opacity="0.9">VAPORWAVE SUN</text>
+</svg>

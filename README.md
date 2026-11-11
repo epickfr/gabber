@@ -1,12 +1,12 @@
 # Epick Chat
 
-An intentionally old-looking chat site: beveled panels, navy title bars, Verdana and Courier text, and underlined blue links. Under the crust it is plain HTML/CSS/JS with Supabase for accounts, storage, and realtime.
+An old-school chat site: silver panels, navy title bars, sunken inputs, Verdana and Courier text, and underlined blue links. Under the hood it is plain HTML/CSS/JS with Supabase for accounts, storage, and realtime.
 
-The old look is a style choice, not a claim about the code's age.
+The design copies the everyday look of late-90s web chat rather than a modern "retro" theme: system colours, 1px gray borders, beveled buttons, and dense small text.
 
 ## What it does
 
-- Email/password accounts with a unique username
+- Username/password accounts; no email address is asked for or shown anywhere
 - Custom profiles: display name, bio, avatar colour, avatar image, and banner
 - Friends: search users, send requests, accept/decline, remove friends
 - Direct messages between friends
@@ -15,8 +15,10 @@ The old look is a style choice, not a claim about the code's age.
 - Live messages, replies, and online dots via Supabase Realtime
 - Message deletion (your own messages; staff can delete anyone's in rooms)
 - Ranks shown next to names: `(owner)`, `(co-owner)`, `(admin)`, `(mod)`
-- Admin panel for staff: change ranks, announce, delete rooms, fun buttons
-- Chat commands such as `/me`, `/roll`, `/purge`, `/topic`, `/announce`
+- Admin panel for staff: change ranks, ban/unban, announce, delete rooms, fun buttons
+- Bans: admins can stop a user from chatting, with a reason shown to that user
+- Announcements only render as system notices when the database marks them as system; typing `[ANNOUNCEMENT]` does nothing special
+- Chat commands such as `/me`, `/roll`, `/purge`, `/topic`, `/ban`, `/unban`, `/announce`
 - Chat image embeds show a content warning and a **view anyway** button first
 - Chat history stored in Postgres, so Render redeploys do not wipe it
 - Row Level Security: users can only read rooms/DMs they belong to
@@ -29,11 +31,17 @@ Ranks live on `public.profiles.rank` and are shown next to usernames.
 | --- | --- | --- |
 | `owner` | red | everything, including granting any rank |
 | `co-owner` | purple | change ranks (except owner/co-owner), all admin actions |
-| `admin` | blue | announce, delete rooms, delete any room message |
+| `admin` | blue | announce, delete rooms, delete any room message, ban/unban members and mods |
 | `mod` | green | delete any room message, `/purge`, `/topic` |
 | `member` | (none) | normal chat, delete own messages |
 
-The first person to press **claim ownership** (shown on the profile card when no owner exists) becomes the owner. After that, the owner and co-owners can change ranks in the admin panel.
+Ownership is not claimable from the site. To make the first owner, sign up normally, then run this once in the Supabase SQL Editor:
+
+```sql
+update public.profiles set rank = 'owner' where username = 'your_username';
+```
+
+After that, the owner and co-owners can change ranks in the admin panel. Bans follow the same hierarchy: admins can ban members and mods, only the owner or co-owner can ban another admin, and nobody can ban an owner, co-owner, or themselves.
 
 ## Chat commands
 
@@ -46,6 +54,8 @@ The first person to press **claim ownership** (shown on the profile card when no
 | `/topic new topic` | staff or room owner | change the room topic |
 | `/purge 10` | staff | delete the last N messages in the room |
 | `/announce text` | admins | post a system announcement |
+| `/ban username reason` | admins | stop a user from chatting |
+| `/unban username` | admins | let a banned user chat again |
 
 ## Is it private?
 
@@ -61,7 +71,7 @@ The code is set up so that user data is private even though the site is publicly
 - A user can only post as themselves, and only in rooms they joined.
 - Friend requests must be accepted through a server-side function; a user cannot forge an accepted friendship.
 - Image uploads go to the public `epick` bucket, but a user can only write inside their own `avatars/<uid>/`, `banners/<uid>/`, and `chat/<uid>/` folders.
-- Rank changes, announcements, room deletion, and purges run through server-side functions that check the caller's rank.
+- Rank changes, bans, announcements, room deletion, and purges run through server-side functions that check the caller's rank.
 - The `service_role` key is never used in the frontend.
 
 ### About the Supabase key
@@ -76,17 +86,23 @@ What this repo does:
 
 If you want the whole site locked down (no public signups), turn off new signups in Supabase **Authentication -> Providers -> Email** or remove the signup form.
 
+### Username-only accounts
+
+Supabase Auth is built around an email address, so the app quietly turns a username into an internal address (`username@epick.local`). That address never appears in the UI, is never shown to other users, and is not used to send mail. The only thing users type is a username and password.
+
+Because of that, **Confirm email must be off**. If it is on, Supabase waits for a confirmation that can never arrive, and username-only signups cannot sign in.
+
 ## Files
 
 ```
 EpickChat/
   index.html              the whole UI (login + chat + modals)
-  styles.css              retro stylesheet
+  styles.css              old-web stylesheet
   banners/                preset banner images (2300x1080)
   js/config.example.js    copy to js/config.js for local development
   js/config.js            generated / gitignored (your local values)
   js/app.js               auth, rooms, friends, DMs, profiles, ranks, realtime
-  js/banners.js           banner preset manifest
+  js/banners.js           banner preset manifest (add every image here)
   build-config.js         writes js/config.js from env vars on Render
   supabase/schema.sql     run this once in Supabase
   render.yaml             Render static-site blueprint
@@ -99,7 +115,7 @@ EpickChat/
 
 1. Make a free account at <https://supabase.com> and create a new project.
 2. Open **SQL Editor**, paste the entire contents of `supabase/schema.sql`, and click **Run**.
-   - This creates the tables, policies, storage bucket, ranks, admin functions, realtime setup, the `#lobby` room, and a trigger that gives every new user a profile.
+   - This creates the tables, policies, storage bucket, ranks, bans, admin functions, realtime setup, the `#lobby` room, and a trigger that gives every new user a profile.
    - `schema.sql` is safe to re-run on an existing project: it adds the newer columns and policies without deleting your data.
 3. Open **Project Settings -> API** and copy:
    - **Project URL**
@@ -107,10 +123,7 @@ EpickChat/
 
 ### Email confirmation
 
-By default Supabase asks new users to confirm their email. You can either:
-
-- **Simplest:** go to **Authentication -> Providers -> Email** and turn **Confirm email** off. Signup then logs you straight in.
-- **Keep it on:** go to **Authentication -> URL Configuration** and set the **Site URL** to your Render URL (and add it to **Redirect URLs**). New users will get a confirmation email.
+The app never asks for an email, so there is nothing to confirm. Go to **Authentication -> Providers -> Email** and turn **Confirm email** off. With it on, new accounts are created but cannot sign in until an email that does not exist is confirmed.
 
 ## 2. Run it locally
 
@@ -156,7 +169,7 @@ This is a static site, so no server is needed.
    - `SUPABASE_ANON_KEY`
 4. Paste the values from Supabase. They are stored in Render, not in the repo.
 5. Deploy. The build command runs `node build-config.js`, which writes the key into `js/config.js` for that build only.
-6. After the first deploy, copy the `onrender.com` URL into Supabase **Authentication -> URL Configuration -> Site URL** (and Redirect URLs if you kept email confirmation on).
+6. After the first deploy, set Supabase **Authentication -> URL Configuration -> Site URL** to the `onrender.com` URL. You do not need redirect URLs for username-only signups, but adding the site URL is still good practice.
 
 Manual route instead of the Blueprint: **New + -> Static Site**, connect the repo, set the build command to `node build-config.js`, and set **Publish directory** to `.`. Add the two environment variables in the dashboard.
 
@@ -164,9 +177,19 @@ Manual route instead of the Blueprint: **New + -> Static Site**, connect the rep
 
 - Supabase free projects pause after a period of inactivity. They resume when opened; data is not lost.
 - Realtime is enabled by `schema.sql`. If messages only appear after a refresh, check **Database -> Replication** and make sure the `messages`, `dm_messages`, `friendships`, `rooms`, `room_members`, and `profiles` tables are in the `supabase_realtime` publication.
-- **Upgrading an existing install:** re-run the whole `supabase/schema.sql` in the SQL Editor. It adds `bio`, `avatar_url`, `banner_url`, `rank`, `reply_to`, `reply_snippet`, the `epick` storage bucket and its policies, and the admin RPCs. Without it, profiles, images, ranks, replies, and admin actions will fail with a "column/schema cache" error.
+- **Upgrading an existing install:** re-run the whole `supabase/schema.sql` in the SQL Editor. It adds `bio`, `avatar_url`, `banner_url`, `rank`, `reply_to`, `reply_snippet`, the ban columns (`banned`, `ban_reason`, `banned_at`, `banned_by`), the `epick` storage bucket and its policies, and the admin RPCs. Without it, profiles, images, ranks, replies, bans, and admin actions will fail with a "column/schema cache" error.
 - If image uploads fail, confirm the `epick` bucket exists and is public, then re-run the storage section of `schema.sql`.
-- The old look is on purpose: beveled panels, navy title bars, Verdana/Courier type, and tiny underlined links.
+- The old-web look is deliberate: silver system colours, navy gradient title bars, sunken inputs, beveled buttons, Verdana/Courier type, and tiny underlined links.
+
+### Adding banners
+
+Static hosting cannot list a folder at runtime, so the picker only shows images named in `js/banners.js`. Drop a PNG or JPG into `banners/`, then add one line:
+
+```js
+{ id: 'my-banner', name: 'My Banner', file: 'banners/my-banner.png' }
+```
+
+Reload the page and it appears in the profile editor. The six SVG presets and the three included PNGs (`bliss.png`, `nyancat.png`, `pipes.png`) are already listed.
 
 ## Troubleshooting
 
@@ -180,7 +203,10 @@ Re-run `supabase/schema.sql`; the newer `profiles` columns have not been added t
 Re-run the storage section of `supabase/schema.sql` so the public `epick` bucket and its folder policies exist.
 
 **Rank options do nothing**
-Only the owner and co-owners can change ranks, and you cannot change your own. If nobody is owner yet, press **claim ownership** on your profile card.
+Only the owner and co-owners can change ranks, and you cannot change your own. There is no claim button: set the first owner manually with `update public.profiles set rank = 'owner' where username = 'your_username';` in the Supabase SQL Editor.
+
+**A user still cannot sign in after registering**
+Turn off **Confirm email** in Supabase under **Authentication -> Providers -> Email**. Username-only accounts use internal addresses, so confirmation mail can never be completed.
 
 **"Database error saving new user"**
 The username is probably taken. Re-run the latest `schema.sql` so the `username_available` function exists, then try a different username.

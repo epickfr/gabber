@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2300" height="1080" viewBox="0 0 2300 1080">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#050b26"/>
+      <stop offset="1" stop-color="#0b1f5e"/>
+    </linearGradient>
+    <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+      <path d="M80 0H0V80" fill="none" stroke="#1d3fa8" stroke-width="2" opacity="0.55"/>
+    </pattern>
+  </defs>
+  <rect width="2300" height="1080" fill="url(#bg)"/>
+  <rect width="2300" height="1080" fill="url(#grid)"/>
+  <circle cx="1850" cy="270" r="120" fill="#7fa7ff" opacity="0.35"/>
+  <text x="120" y="960" font-family="Courier New, monospace" font-size="64" fill="#7fa7ff" opacity="0.8">EPICK CHAT</text>
+</svg>
