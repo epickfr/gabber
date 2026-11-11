@@ -1,0 +1,21 @@
+# Render Blueprint: free static site.
+# The Supabase values are build-time secrets. Set them in the Render
+# dashboard when Render prompts for them; they are not stored in this repo.
+services:
+  - type: web
+    name: epick-chat
+    runtime: static
+    buildCommand: node build-config.js
+    staticPublishPath: .
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin

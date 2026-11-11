@@ -1,0 +1,276 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Epick Chat - free web chat</title>
+<meta name="description" content="Epick Chat is a free old-school chat system. Make an account, add friends, and talk in public or private rooms.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+
+<body bgcolor="#FFFFFF" text="#000000" link="#0000CC" vlink="#660099" alink="#FF0000">
+
+<a name="top"></a>
+
+<center>
+
+<!-- ================= HEADER ================= -->
+<table width="96%" border="0" cellpadding="0" cellspacing="0" class="masthead">
+  <tr>
+    <td bgcolor="#000066" align="center" height="58">
+      <font face="Arial, Helvetica" color="#FFFFFF" size="6"><b>EPICK CHAT</b></font><br>
+      <font face="Arial, Helvetica" color="#CCCCFF" size="1">A FREE CHAT SYSTEM FOR THE WORLD WIDE WEB</font>
+    </td>
+  </tr>
+</table>
+
+<!-- ================= LOGIN SCREEN ================= -->
+<div id="auth-overlay">
+  <br>
+  <table width="430" border="1" cellpadding="8" cellspacing="0" bordercolor="#999999" bgcolor="#F7F7F7">
+    <tr>
+      <td bgcolor="#000066">
+        <font face="Arial, Helvetica" color="#FFFFFF" size="2"><b>MEMBER LOGIN</b></font>
+      </td>
+    </tr>
+    <tr>
+      <td>
+
+        <div id="setup-panel" hidden>
+          <font face="Arial" size="2">
+          <b>SETUP REQUIRED</b>
+          <p>This chat needs a free Supabase database before it can run. It takes about 5 minutes:</p>
+          <ol>
+            <li>Create a project at <a href="https://supabase.com" target="_blank">supabase.com</a>.</li>
+            <li>Open <b>SQL Editor</b> and run <tt>supabase/schema.sql</tt>.</li>
+            <li>Go to <b>Project Settings &gt; API</b> and copy the Project URL and the <tt>anon</tt> public key.</li>
+            <li>Paste them into <tt>js/config.js</tt> locally, or set <tt>SUPABASE_URL</tt> and <tt>SUPABASE_ANON_KEY</tt> in Render.</li>
+            <li>Reload this page.</li>
+          </ol>
+          <p>The full walkthrough is in <tt>README.md</tt>. Messages are stored in Postgres, so they survive redeploys.</p>
+          <p><button type="button" onclick="location.reload()">I configured it - reload</button></p>
+          </font>
+        </div>
+
+        <div id="auth-main">
+          <div id="auth-tabs">
+            <button type="button" class="auth-tab active" data-tab="login">Sign in</button>
+            <font size="2"> | </font>
+            <button type="button" class="auth-tab" data-tab="register">Register</button>
+          </div>
+
+          <hr size="1" color="#999999">
+
+          <form id="login-form" action="#" method="post">
+            <table border="0" cellpadding="3" cellspacing="0">
+              <tr>
+                <td align="right"><font face="Arial" size="2">Email:</font></td>
+                <td><input id="login-email" type="email" name="email" size="28" required autocomplete="email"></td>
+              </tr>
+              <tr>
+                <td align="right"><font face="Arial" size="2">Password:</font></td>
+                <td><input id="login-password" type="password" name="password" size="28" required autocomplete="current-password"></td>
+              </tr>
+            </table>
+            <p><button type="submit">Enter chat</button></p>
+          </form>
+
+          <form id="register-form" action="#" method="post" hidden>
+            <table border="0" cellpadding="3" cellspacing="0">
+              <tr>
+                <td align="right"><font face="Arial" size="2">Username:</font></td>
+                <td>
+                  <input id="register-username" type="text" name="username" size="24" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+" autocomplete="username">
+                  <br><font face="Arial" size="1" color="#666666">3-20 letters, numbers, underscores</font>
+                </td>
+              </tr>
+              <tr>
+                <td align="right"><font face="Arial" size="2">Display name:</font></td>
+                <td><input id="register-display" type="text" name="display" size="24" maxlength="30" autocomplete="nickname"> <font face="Arial" size="1" color="#666666">(optional)</font></td>
+              </tr>
+              <tr>
+                <td align="right"><font face="Arial" size="2">Email:</font></td>
+                <td><input id="register-email" type="email" name="email" size="28" required autocomplete="email"></td>
+              </tr>
+              <tr>
+                <td align="right"><font face="Arial" size="2">Password:</font></td>
+                <td>
+                  <input id="register-password" type="password" name="password" size="24" required minlength="6" autocomplete="new-password">
+                  <br><font face="Arial" size="1" color="#666666">at least 6 characters</font>
+                </td>
+              </tr>
+            </table>
+            <p><button type="submit">Create account</button></p>
+          </form>
+
+          <div id="auth-error" class="auth-error" hidden></div>
+
+          <font face="Arial" size="1" color="#555555">
+            New here? Click <b>Register</b>. It is free. We will not send you banner ads.
+          </font>
+        </div>
+
+      </td>
+    </tr>
+  </table>
+
+</div>
+
+<!-- ================= CHAT SCREEN ================= -->
+<div id="app-window" hidden>
+
+  <table width="96%" border="0" cellpadding="2" cellspacing="0" bgcolor="#EEEEEE">
+    <tr>
+      <td align="center">
+        <font face="Arial, Helvetica" size="1">
+          <a href="#top">home</a> |
+          <a href="#chat">chat</a> |
+          <a href="#rooms">rooms</a> |
+          <a href="#friends">friends</a> |
+          <a href="#help">help</a>
+        </font>
+      </td>
+    </tr>
+  </table>
+
+  <marquee behavior="scroll" direction="left" scrollamount="2" width="96%" class="ticker">
+    <font face="Arial, Helvetica" size="1">
+      *** WELCOME TO EPICK CHAT *** be nice *** no spam *** private rooms are invite-only *** tell your friends ***
+    </font>
+  </marquee>
+
+  <div class="mobile-bar">
+    <button type="button" id="sidebar-toggle" class="linkbtn">[ rooms &amp; friends ]</button>
+  </div>
+
+  <table width="96%" border="0" cellpadding="0" cellspacing="0" id="app-body">
+    <tr>
+
+      <!-- ============ LEFT COLUMN ============ -->
+      <td width="21%" valign="top" class="sidebar-cell">
+        <div id="sidebar">
+
+          <table width="100%" border="0" cellpadding="3" cellspacing="0" bgcolor="#EEEEEE">
+            <tr><td>
+              <div id="sidebar-me"></div>
+              <font face="Arial" size="1">
+                <button type="button" id="logout-btn" class="linkbtn">log out</button>
+              </font>
+            </td></tr>
+          </table>
+
+          <br>
+
+          <font face="Arial, Helvetica" size="2"><b>MY ROOMS</b></font>
+          <div id="my-rooms" class="side-list"></div>
+          <font face="Arial" size="1">
+            <button type="button" id="new-room-btn" class="linkbtn">+ new room</button><br>
+            <button type="button" id="join-room-btn" class="linkbtn">join by invite code</button>
+          </font>
+
+          <hr size="1" color="#999999">
+
+          <font face="Arial, Helvetica" size="2"><b>PUBLIC ROOMS</b></font>
+          <div id="public-rooms" class="side-list"></div>
+
+          <hr size="1" color="#999999">
+
+          <font face="Arial, Helvetica" size="2"><b>FRIENDS</b> <span id="friend-count" class="title-count"></span></font>
+          <div id="friend-requests"></div>
+          <div id="friends" class="side-list"></div>
+
+          <form id="add-friend-form" action="#" method="post" autocomplete="off">
+            <font face="Arial" size="1">find a user:</font><br>
+            <input id="friend-search" type="text" size="10" maxlength="20" style="width:78%">
+            <button type="submit">find</button>
+          </form>
+          <div id="friend-results" class="side-list"></div>
+
+        </div>
+      </td>
+
+      <td width="1%" bgcolor="#999999" class="spacer-cell"></td>
+
+      <!-- ============ CHAT COLUMN ============ -->
+      <td width="56%" valign="top" class="chat-cell">
+        <a name="chat"></a>
+
+        <div id="channel-header">
+          <font face="Arial, Helvetica" size="4"><b id="channel-name">-</b></font><br>
+          <font face="Arial" size="1" color="#666666" id="channel-topic">select a room or a friend to start chatting</font>
+          <div id="channel-actions"></div>
+        </div>
+
+        <div id="messages" class="messages"></div>
+
+        <form id="composer" action="#" method="post" autocomplete="off">
+          <table width="100%" border="0" cellpadding="2" cellspacing="0">
+            <tr>
+              <td><input id="message-input" type="text" maxlength="2000" style="width:97%" placeholder="type a message and press Enter"></td>
+              <td width="1%"><button type="submit">Send</button></td>
+            </tr>
+          </table>
+        </form>
+      </td>
+
+      <td width="1%" bgcolor="#999999" class="spacer-cell"></td>
+
+      <!-- ============ RIGHT COLUMN ============ -->
+      <td width="21%" valign="top" class="users-cell">
+        <a name="rooms"></a>
+        <font face="Arial, Helvetica" size="2"><b id="userlist-title">PEOPLE</b></font>
+        <div id="member-list" class="member-list"></div>
+        <hr size="1" color="#999999">
+        <font face="Arial" size="1" color="#555555">
+          <b>HOUSE RULES</b><br>
+          1. no spam<br>
+          2. no flooding<br>
+          3. be excellent to each other<br>
+          <br>
+          <b>NEED HELP?</b><br>
+          Ask in <b>#lobby</b>.
+        </font>
+      </td>
+
+    </tr>
+  </table>
+
+  <table width="96%" border="0" cellpadding="2" cellspacing="0" class="statusbar">
+    <tr>
+      <td>
+        <font face="Arial" size="1" color="#333333">
+          <span class="status-dot offline" id="status-dot"></span>
+          <span id="status-connection">offline</span> |
+          <span id="status-user">guest</span> |
+          <span id="status-online">0 online</span>
+        </font>
+      </td>
+      <td align="right">
+        <font face="Arial" size="1" color="#555555">
+          <span id="status-clock">--:--:--</span>
+        </font>
+      </td>
+    </tr>
+  </table>
+
+</div>
+
+<br>
+
+<!-- ================= FOOTER ================= -->
+<a name="help"></a>
+<hr size="1" width="96%" color="#999999">
+<font face="Arial, Helvetica" size="1" color="#555555">
+  Created by Epick
+</font>
+
+</center>
+
+<div id="toast" class="toast" hidden></div>
+
+<script type="text/javascript" src="js/config.js"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script type="text/javascript" src="js/app.js"></script>
+
+</body>
+</html>
