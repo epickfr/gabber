@@ -1359,3 +1359,69 @@ begin
   begin alter publication supabase_realtime add table public.mod_calls; exception when duplicate_object then null; end;
 end;
 $$;
+
+alter table public.profiles add column if not exists grad_from text;
+alter table public.profiles add column if not exists grad_to text;
+grant update (grad_from, grad_to) on public.profiles to authenticated;
+
+create or replace function public.global_announce(p_text text)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  total integer;
+begin
+  if not public.is_admin() then
+    raise exception 'Admins only';
+  end if;
+  if p_text is null or length(trim(p_text)) = 0 then
+    raise exception 'Announcement is empty';
+  end if;
+
+  insert into public.messages (room_id, sender, body)
+  select r.id, null, '[ANNOUNCEMENT] ' || left(trim(p_text), 500)
+  from public.rooms r;
+
+  get diagnostics total = row_count;
+  return total;
+end;
+$$;
+grant execute on function public.global_announce(text) to authenticated;
+
+create or replace function public.global_lock(p_locked boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Admins only';
+  end if;
+
+  update public.rooms
+  set post_mode = case when coalesce(p_locked, false) then 'owner' else 'open' end,
+      updated_at = now();
+end;
+$$;
+grant execute on function public.global_lock(boolean) to authenticated;
+
+create or replace function public.global_slowmode(p_seconds integer)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Admins only';
+  end if;
+
+  update public.rooms
+  set slowmode = greatest(0, least(300, coalesce(p_seconds, 0))),
+      updated_at = now();
+end;
+$$;
+grant execute on function public.global_slowmode(integer) to authenticated;

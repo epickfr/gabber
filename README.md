@@ -1,13 +1,13 @@
 # Epick Chat
 
-An old-school chat site: silver panels, navy title bars, sunken inputs, Verdana and Courier text, and underlined blue links. Under the hood it is plain HTML/CSS/JS with Supabase for accounts, storage, and realtime.
+An early-2000s community site: a fixed table layout, blue gradient box headers, sidebar boxes, a status bar, Verdana and Courier text, and underlined blue links. Under the hood it is plain HTML/CSS/JS with Supabase for accounts, storage, and realtime.
 
-The design copies the everyday look of late-90s web chat rather than a modern "retro" theme: system colours, 1px gray borders, beveled buttons, and dense small text.
+The design is built the way a webmaster of 2000-2001 would actually build it: HTML tables for structure, a stylesheet for the chrome, and floats, inline-blocks, and `display: table` inside the boxes. It is not a modern page wearing a retro skin, and it does not imitate Windows 98.
 
 ## What it does
 
 - Username/password accounts; no email address is asked for or shown anywhere
-- Custom profiles: display name, bio, avatar colour, avatar image, and banner
+- Custom profiles: display name, bio, avatar colour, avatar image, banner, and a two-colour profile gradient
 - Friends: search users, send requests, accept/decline, remove friends
 - Direct messages between friends
 - Public rooms anyone can join
@@ -15,13 +15,14 @@ The design copies the everyday look of late-90s web chat rather than a modern "r
 - Room owner tools: rename, topic, welcome line, room photo, accent colour, chat font, slowmode, who-can-talk mode, room mods, mute, and kick
 - Modcalls: anyone can call a mod into a room, staff see the open queue in the admin panel
 - Notification bell: mentions, new DMs, room changes, kicks/mutes, and a "while you were away" summary
+- Optional desktop alerts for mentions, DMs, and modcalls while the tab is hidden
 - Live messages, replies, and online dots via Supabase Realtime
 - Message deletion (your own messages; staff can delete anyone's in rooms)
 - Ranks shown next to names: `(owner)`, `(co-owner)`, `(admin)`, `(mod)`
-- Admin panel for staff: change ranks, ban/unban, announce, delete rooms, fun buttons
+- Admin panel for staff: change ranks, ban/unban, announce, a **GLOBAL** section (broadcast to every room, lock/unlock every room, set slowmode everywhere), delete rooms, fun buttons
 - Bans: admins can stop a user from chatting, with a reason shown to that user
 - Announcements only render as system notices when the database marks them as system; typing `[ANNOUNCEMENT]` does nothing special
-- Chat commands such as `/me`, `/roll`, `/purge`, `/topic`, `/ban`, `/unban`, `/announce`, `/modcall`
+- Chat commands such as `/me`, `/roll`, `/purge`, `/topic`, `/ban`, `/unban`, `/announce`, `/global`, `/globallock`, `/globalslow`, `/modcall`
 - Chat image embeds show a content warning and a **view anyway** button first
 - Chat history stored in Postgres, so Render redeploys do not wipe it
 - Row Level Security: users can only read rooms/DMs they belong to
@@ -56,7 +57,10 @@ After that, the owner and co-owners can change ranks in the admin panel. Bans fo
 | `/help` | everyone | list commands |
 | `/topic new topic` | room owner, room mod, staff | change the room topic |
 | `/purge 10` | staff | delete the last N messages in the room |
-| `/announce text` | admins | post a system announcement |
+| `/announce text` | admins | post a system announcement in the current room |
+| `/global text` | admins | post a system announcement in every room |
+| `/globallock`, `/globalunlock` | admins | lock or unlock every room at once |
+| `/globalslow 10` | admins | set slowmode in every room, 0 = off |
 | `/ban username reason` | admins | stop a user from chatting |
 | `/unban username` | admins | let a banned user chat again |
 | `/kick username` | room owner, room mod, staff | remove someone from the room |
@@ -84,6 +88,8 @@ Open a room and press **settings** (room owner or staff only). The room settings
 - members: mute, promote to room mod, or kick
 
 Room mods can use `/kick`, `/mute`, `/unmute`, `/invite`, and `/slowmode`, but cannot rename the room or change who can talk. A kick removes the person right away; public rooms auto-join when opened, so a kicked user can walk back into a public room. The notification bell shows mentions (`@username`), new DMs, room setting changes, kicks, mutes, and a summary of what happened while you were offline.
+
+Staff also get a **GLOBAL** section in the admin panel. It can broadcast a system line into every room, lock every room so only room owners and staff can talk, and push a slowmode value to every room at once.
 
 ## Is it private?
 
@@ -124,8 +130,8 @@ Because of that, **Confirm email must be off**. If it is on, Supabase waits for 
 
 ```
 EpickChat/
-  index.html              the whole UI (login + chat + modals)
-  styles.css              old-web stylesheet
+  index.html              the whole UI in an early-2000 table layout (login + chat + modals)
+  styles.css              early-2000 stylesheet
   banners/                preset banner images (2300x1080)
   js/config.example.js    copy to js/config.js for local development
   js/config.js            generated / gitignored (your local values)
@@ -205,9 +211,10 @@ Manual route instead of the Blueprint: **New + -> Static Site**, connect the rep
 
 - Supabase free projects pause after a period of inactivity. They resume when opened; data is not lost.
 - Realtime is enabled by `schema.sql`. If messages only appear after a refresh, check **Database -> Replication** and make sure the `messages`, `dm_messages`, `friendships`, `rooms`, `room_members`, and `profiles` tables are in the `supabase_realtime` publication.
-- **Upgrading an existing install:** re-run the whole `supabase/schema.sql` in the SQL Editor. It adds `bio`, `avatar_url`, `banner_url`, `rank`, `reply_to`, `reply_snippet`, the ban columns (`banned`, `ban_reason`, `banned_at`, `banned_by`), the `epick` storage bucket and its policies, and the admin RPCs. Without it, profiles, images, ranks, replies, bans, and admin actions will fail with a "column/schema cache" error.
+- **Upgrading an existing install:** re-run the whole `supabase/schema.sql` in the SQL Editor. It adds `bio`, `avatar_url`, `banner_url`, `grad_from`, `grad_to`, `rank`, `reply_to`, `reply_snippet`, the ban columns (`banned`, `ban_reason`, `banned_at`, `banned_by`), the `epick` storage bucket and its policies, the room and modcall RPCs, and the global RPCs (`global_announce`, `global_lock`, `global_slowmode`). Without it, profiles, gradients, images, ranks, replies, bans, and admin actions will fail with a "column/schema cache" error.
 - If image uploads fail, confirm the `epick` bucket exists and is public, then re-run the storage section of `schema.sql`.
-- The old-web look is deliberate: silver system colours, navy gradient title bars, sunken inputs, beveled buttons, Verdana/Courier type, and tiny underlined links.
+- The layout is deliberate: an HTML table skeleton, blue gradient box headers, sidebar and profile boxes, a status bar, Verdana/Courier type, and tiny underlined links. The mobile fallback flips the table cells to blocks and hides the sidebar behind a toggle.
+- Desktop alerts are a browser permission, not a server feature. The on/off choice is stored in `localStorage` under `epickchat:alerts` and only fires while the tab is hidden.
 
 ### Adding banners
 

@@ -136,6 +136,7 @@
     typewriter: '"Lucida Console", Monaco, monospace'
   };
   const ROOM_ACCENTS = ['#000080', '#7a1f1f', '#0a5d2a', '#5b2a86', '#006b6b', '#333333'];
+  const GRAD_COLORS = ['#1b4c8c', '#2b5c9e', '#4f86c6', '#7a2fbf', '#b8860b', '#c0392b', '#0a7d32', '#008b8b', '#333333', '#d2691e'];
   const AUTH_EMAIL_DOMAIN = '@epick.local';
   const authEmail = (username) => String(username || '').trim().toLowerCase() + AUTH_EMAIL_DOMAIN;
 
@@ -165,6 +166,14 @@
     if (!url) return '';
     const safe = String(url).replace(/["'\\()\s]/g, '');
     return 'background-image:url("' + safe + '")';
+  }
+
+  function gradientStyle(person) {
+    const from = person && person.grad_from;
+    const to = person && person.grad_to;
+    if (!from || !to) return '';
+    if (!/^#[0-9a-f]{6}$/i.test(from) || !/^#[0-9a-f]{6}$/i.test(to)) return '';
+    return 'background:linear-gradient(135deg,' + from + ',' + to + ')';
   }
 
   function imageGate(url) {
@@ -275,7 +284,6 @@
     registerPassword: $id('register-password'),
     authError: $id('auth-error'),
     appBody: $id('app-body'),
-    sidebar: $id('sidebar'),
     sidebarToggle: $id('sidebar-toggle'),
     sidebarMe: $id('sidebar-me'),
     myRooms: $id('my-rooms'),
@@ -339,6 +347,19 @@
     bellPanel: $id('bell-panel'),
     bellList: $id('bell-list'),
     bellClear: $id('bell-clear'),
+    alertsBtn: $id('alerts-btn'),
+    navUser: $id('nav-user'),
+    navAdmin: $id('nav-admin'),
+    profileGradFrom: $id('profile-grad-from'),
+    profileGradTo: $id('profile-grad-to'),
+    profileGradClear: $id('profile-grad-clear'),
+    profileGradPreview: $id('profile-grad-preview'),
+    adminGlobalText: $id('admin-global-text'),
+    adminGlobalSend: $id('admin-global-send'),
+    adminGlobalLock: $id('admin-global-lock'),
+    adminGlobalUnlock: $id('admin-global-unlock'),
+    adminGlobalSlow: $id('admin-global-slow'),
+    adminGlobalSlowBtn: $id('admin-global-slow-btn'),
     roomNotice: $id('room-notice'),
     roomModal: $id('room-modal'),
     roomClose: $id('room-close'),
@@ -419,6 +440,7 @@
     ui.auth.hidden = false;
     ui.app.hidden = true;
     ui.headerUser.hidden = true;
+    ui.navUser.hidden = true;
     setAuthError('');
   }
 
@@ -439,6 +461,8 @@
       ui.auth.hidden = true;
       ui.app.hidden = false;
       ui.headerUser.hidden = false;
+      ui.navUser.hidden = false;
+      updateAlertsButton();
       renderAll();
 
       startPresence();
@@ -476,6 +500,8 @@
     ui.app.hidden = true;
     ui.auth.hidden = false;
     ui.headerUser.hidden = true;
+    ui.navUser.hidden = true;
+    ui.navAdmin.hidden = true;
     ui.adminBtn.hidden = true;
     ui.profileModal.hidden = true;
     ui.adminModal.hidden = true;
@@ -676,6 +702,24 @@
       state.editor.color = swatch.dataset.color;
       renderEditorPreviews();
     });
+    ui.profileGradFrom.addEventListener('click', (event) => {
+      const swatch = event.target.closest('[data-grad-from]');
+      if (!swatch || !state.editor) return;
+      state.editor.grad_from = swatch.dataset.gradFrom || '';
+      renderEditorPreviews();
+    });
+    ui.profileGradTo.addEventListener('click', (event) => {
+      const swatch = event.target.closest('[data-grad-to]');
+      if (!swatch || !state.editor) return;
+      state.editor.grad_to = swatch.dataset.gradTo || '';
+      renderEditorPreviews();
+    });
+    ui.profileGradClear.addEventListener('click', () => {
+      if (!state.editor) return;
+      state.editor.grad_from = '';
+      state.editor.grad_to = '';
+      renderEditorPreviews();
+    });
     ui.profileBanners.addEventListener('click', (event) => {
       const tile = event.target.closest('[data-banner]');
       if (!tile || !state.editor) return;
@@ -707,6 +751,7 @@
       event.stopPropagation();
       toggleBell();
     });
+    ui.alertsBtn.addEventListener('click', toggleAlerts);
     ui.bellClear.addEventListener('click', markAllRead);
     ui.bellList.addEventListener('click', (event) => {
       const item = event.target.closest('.bell-item');
@@ -805,6 +850,10 @@
       if (fun) runFunCommand(fun.dataset.fun);
     });
     ui.adminAnnounceBtn.addEventListener('click', sendAnnouncement);
+    ui.adminGlobalSend.addEventListener('click', sendGlobalAnnouncement);
+    ui.adminGlobalLock.addEventListener('click', () => setGlobalLock(true));
+    ui.adminGlobalUnlock.addEventListener('click', () => setGlobalLock(false));
+    ui.adminGlobalSlowBtn.addEventListener('click', applyGlobalSlowmode);
     ui.adminUsers.addEventListener('change', (event) => {
       const select = event.target.closest('[data-rank-user]');
       if (select) changeRank(select.dataset.rankUser, select.value);
@@ -830,6 +879,32 @@
 
     ui.newRoomBtn.addEventListener('click', openNewRoomModal);
     ui.joinRoomBtn.addEventListener('click', openJoinRoomModal);
+
+    document.addEventListener('click', (event) => {
+      const link = event.target.closest('[data-nav]');
+      if (!link) return;
+      const nav = link.dataset.nav;
+
+      if (nav === 'rooms') {
+        event.preventDefault();
+        window.scrollTo(0, 0);
+      } else if (nav === 'new-room') {
+        event.preventDefault();
+        openNewRoomModal();
+      } else if (nav === 'join-room') {
+        event.preventDefault();
+        openJoinRoomModal();
+      } else if (nav === 'profile') {
+        event.preventDefault();
+        openProfileEditor();
+      } else if (nav === 'admin') {
+        event.preventDefault();
+        openAdminPanel();
+      } else if (nav === 'logout') {
+        event.preventDefault();
+        sb.auth.signOut();
+      }
+    });
 
     ui.addFriendForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -1044,6 +1119,77 @@
     ui.bellPanel.hidden = !ui.bellPanel.hidden;
   }
 
+  function alertsSupported() {
+    return typeof window.Notification === 'function';
+  }
+
+  function alertsEnabled() {
+    return alertsSupported() &&
+      localStorage.getItem('epickchat:alerts') === '1' &&
+      window.Notification.permission === 'granted';
+  }
+
+  function updateAlertsButton() {
+    if (!ui.alertsBtn) return;
+    ui.alertsBtn.hidden = !alertsSupported();
+    if (!alertsSupported()) return;
+    const on = alertsEnabled();
+    ui.alertsBtn.textContent = 'alerts: ' + (on ? 'on' : 'off');
+    ui.alertsBtn.classList.toggle('primary', on);
+  }
+
+  async function toggleAlerts() {
+    if (!alertsSupported()) {
+      toast('This browser cannot show desktop alerts.');
+      return;
+    }
+
+    if (alertsEnabled()) {
+      localStorage.setItem('epickchat:alerts', '0');
+      updateAlertsButton();
+      toast('Desktop alerts off.');
+      return;
+    }
+
+    if (window.Notification.permission === 'denied') {
+      toast('Alerts are blocked in your browser settings.');
+      return;
+    }
+
+    const permission = window.Notification.permission === 'granted'
+      ? 'granted'
+      : await window.Notification.requestPermission();
+
+    if (permission !== 'granted') {
+      toast('Alerts were not allowed.');
+      return;
+    }
+
+    localStorage.setItem('epickchat:alerts', '1');
+    updateAlertsButton();
+    toast('Desktop alerts on. Mentions, private messages and modcalls will pop up while the tab is hidden.');
+  }
+
+  function desktopAlert(body, options) {
+    if (!alertsEnabled() || !document.hidden) return;
+    const opts = options || {};
+
+    try {
+      const note = new window.Notification('Epick Chat', {
+        body: String(body || '').slice(0, 180),
+        tag: opts.tag || 'epick-chat',
+        icon: 'favicon.svg'
+      });
+      note.onclick = () => {
+        window.focus();
+        if (typeof opts.open === 'function') opts.open();
+        note.close();
+      };
+    } catch (_) {
+      return;
+    }
+  }
+
   async function markAllRead() {
     state.awayDigest = null;
     if (!state.notifications.some((item) => !item.seen)) {
@@ -1144,6 +1290,18 @@
             state.threadToFriend.get(state.current.id) === item.actor)
         );
         if (viewing) markConversationSeen({ id: item.id });
+
+        if (item.kind === 'mention' || item.kind === 'dm' || item.kind === 'modcall') {
+          desktopAlert(item.body, {
+            tag: 'notif-' + item.id,
+            open: () => openNotification(
+              String(item.id),
+              item.room_id || '',
+              item.kind,
+              item.actor || ''
+            )
+          });
+        }
 
         if (item.kind === 'mention') toast('You were mentioned in chat.');
         if (item.kind === 'modcall' && isStaff()) toast('New modcall.');
@@ -1296,9 +1454,10 @@
 
   function profileCardNode(person, online, options) {
     const opts = options || {};
+    const grad = gradientStyle(person);
     const card = h('div', { class: 'profile-card' },
       h('div', { class: 'profile-banner', style: bannerStyle(person.banner_url) }),
-      h('div', { class: 'profile-head' },
+      h('div', { class: 'profile-head' + (grad ? ' has-grad' : ''), style: grad },
         avatarNode(person, 'big'),
         h('div', { class: 'profile-head-text' },
           h('div', { class: 'profile-name' }, person.username, rankBadge(person)),
@@ -1332,6 +1491,7 @@
     }
 
     const person = state.profile;
+    const grad = gradientStyle(person);
 
     ui.sidebarMe.replaceChildren(
       avatarNode(person, 'small'),
@@ -1344,7 +1504,7 @@
 
     ui.myCard.replaceChildren(
       h('div', { class: 'profile-banner', style: bannerStyle(person.banner_url) }),
-      h('div', { class: 'profile-head' },
+      h('div', { class: 'profile-head' + (grad ? ' has-grad' : ''), style: grad },
         avatarNode(person, 'big'),
         h('div', { class: 'profile-head-text' },
           h('div', { class: 'profile-name' }, person.username, rankBadge(person)),
@@ -2253,7 +2413,7 @@
 
     const { data, error } = await sb
       .from('profiles')
-      .select('id, username, display_name, color, avatar_url')
+      .select('id, username, display_name, color, avatar_url, grad_from, grad_to')
       .ilike('username', '%' + query + '%')
       .neq('id', state.me.id)
       .limit(8);
@@ -2520,7 +2680,9 @@
       bio: person.bio || '',
       color: person.color || '#0a7d32',
       avatar_url: person.avatar_url || '',
-      banner_url: person.banner_url || ''
+      banner_url: person.banner_url || '',
+      grad_from: person.grad_from || '',
+      grad_to: person.grad_to || ''
     };
 
     ui.profileDisplay.value = state.editor.display_name;
@@ -2560,6 +2722,51 @@
         'aria-label': 'avatar colour ' + color
       }))
     );
+
+    const gradFrom = editor.grad_from || '';
+    const gradTo = editor.grad_to || '';
+
+    ui.profileGradFrom.replaceChildren(
+      h('button', {
+        type: 'button',
+        class: 'swatch' + (!gradFrom ? ' active' : ''),
+        style: 'background-color:#ffffff',
+        'data-grad-from': '',
+        title: 'no colour',
+        'aria-label': 'no gradient start colour'
+      }),
+      ...GRAD_COLORS.map((color) => h('button', {
+        type: 'button',
+        class: 'swatch' + (color === gradFrom ? ' active' : ''),
+        style: 'background-color:' + color,
+        'data-grad-from': color,
+        title: color,
+        'aria-label': 'gradient start ' + color
+      }))
+    );
+
+    ui.profileGradTo.replaceChildren(
+      h('button', {
+        type: 'button',
+        class: 'swatch' + (!gradTo ? ' active' : ''),
+        style: 'background-color:#ffffff',
+        'data-grad-to': '',
+        title: 'no colour',
+        'aria-label': 'no gradient end colour'
+      }),
+      ...GRAD_COLORS.map((color) => h('button', {
+        type: 'button',
+        class: 'swatch' + (color === gradTo ? ' active' : ''),
+        style: 'background-color:' + color,
+        'data-grad-to': color,
+        title: color,
+        'aria-label': 'gradient end ' + color
+      }))
+    );
+
+    ui.profileGradPreview.setAttribute('style', gradFrom && gradTo
+      ? 'background:linear-gradient(135deg,' + gradFrom + ',' + gradTo + ')'
+      : '');
 
     const presets = Array.isArray(window.EPICK_BANNERS) ? window.EPICK_BANNERS : [];
     const tiles = [
@@ -2631,7 +2838,9 @@
         bio,
         color: editor.color,
         avatar_url: editor.avatar_url || null,
-        banner_url: editor.banner_url || null
+        banner_url: editor.banner_url || null,
+        grad_from: editor.grad_from || null,
+        grad_to: editor.grad_to || null
       })
       .eq('id', state.me.id)
       .select()
@@ -2655,6 +2864,7 @@
 
   function updateAdminButton() {
     ui.adminBtn.hidden = !isStaff();
+    ui.navAdmin.hidden = !isStaff();
   }
 
   function applyBanState() {
@@ -3116,7 +3326,7 @@
     if (name === 'help') {
       toast('/me /shrug /tableflip /unflip /roll /coinflip /8ball /users /whois /stats /color /clear /modcall /report /help' +
         (isStaff() ? ' /purge /topic' : '') +
-        (isAdmin() ? ' /announce /ban /unban /resolve' : ''));
+        (isAdmin() ? ' /announce /global /globallock /globalunlock /globalslow /ban /unban /resolve' : ''));
       return true;
     }
 
@@ -3187,6 +3397,51 @@
         p_text: rest
       });
       if (error) { toast(error.message); return true; }
+      return true;
+    }
+
+    if (name === 'global') {
+      if (!isAdmin()) { toast('Admins only.'); return true; }
+      if (!rest) { toast('usage: /global hello every room'); return true; }
+      const { data, error } = await sb.rpc('global_announce', { p_text: rest });
+      if (error) { toast(error.message); return true; }
+      toast('Broadcast posted in ' + (data || 0) + ' rooms.');
+      return true;
+    }
+
+    if (name === 'globallock' || name === 'globalunlock') {
+      if (!isAdmin()) { toast('Admins only.'); return true; }
+      const locked = name === 'globallock';
+      if (!window.confirm(locked
+        ? 'Lock every room so only room owners and staff can talk?'
+        : 'Unlock every room so everyone can talk again?')) return true;
+      const { error } = await sb.rpc('global_lock', { p_locked: locked });
+      if (error) { toast(error.message); return true; }
+      await loadRooms();
+      if (state.current && state.current.type === 'room') {
+        const fresh = state.rooms.find((entry) => entry.id === state.current.id);
+        if (fresh) state.current.room = fresh;
+      }
+      renderRooms();
+      renderHeader();
+      applyRoomTalkState();
+      toast(locked ? 'All rooms locked.' : 'All rooms unlocked.');
+      return true;
+    }
+
+    if (name === 'globalslow') {
+      if (!isAdmin()) { toast('Admins only.'); return true; }
+      const seconds = Math.min(300, Math.max(0, parseInt(rest, 10) || 0));
+      const { error } = await sb.rpc('global_slowmode', { p_seconds: seconds });
+      if (error) { toast(error.message); return true; }
+      await loadRooms();
+      if (state.current && state.current.type === 'room') {
+        const fresh = state.rooms.find((entry) => entry.id === state.current.id);
+        if (fresh) state.current.room = fresh;
+      }
+      renderRooms();
+      applyRoomTalkState();
+      toast(seconds ? 'Slowmode set to ' + seconds + 's everywhere.' : 'Slowmode turned off everywhere.');
       return true;
     }
 
@@ -3376,9 +3631,16 @@
     renderAdminUsers();
     renderAdminRooms();
     renderModCalls();
+    const admin = isAdmin();
     const inRoom = Boolean(state.current && state.current.type === 'room');
-    ui.adminAnnounceBtn.disabled = !inRoom || !isAdmin();
-    ui.adminAnnounce.disabled = !isAdmin();
+    ui.adminAnnounceBtn.disabled = !inRoom || !admin;
+    ui.adminAnnounce.disabled = !admin;
+    ui.adminGlobalText.disabled = !admin;
+    ui.adminGlobalSend.disabled = !admin;
+    ui.adminGlobalLock.disabled = !admin;
+    ui.adminGlobalUnlock.disabled = !admin;
+    ui.adminGlobalSlow.disabled = !admin;
+    ui.adminGlobalSlowBtn.disabled = !admin;
   }
 
   function renderAdminUsers() {
@@ -3542,6 +3804,78 @@
     }
     ui.adminAnnounce.value = '';
     toast('Announcement sent.');
+  }
+
+  async function sendGlobalAnnouncement() {
+    if (!isAdmin()) {
+      toast('Admins only.');
+      return;
+    }
+    const text = ui.adminGlobalText.value.trim();
+    if (!text) return;
+
+    ui.adminGlobalSend.disabled = true;
+    const { data, error } = await sb.rpc('global_announce', { p_text: text });
+    ui.adminGlobalSend.disabled = false;
+
+    if (error) {
+      toast(error.message);
+      return;
+    }
+
+    ui.adminGlobalText.value = '';
+    toast('Broadcast posted in ' + (data || 0) + ' rooms.');
+  }
+
+  async function setGlobalLock(locked) {
+    if (!isAdmin()) {
+      toast('Admins only.');
+      return;
+    }
+
+    const question = locked
+      ? 'Lock every room so only room owners and staff can talk?'
+      : 'Unlock every room so everyone can talk again?';
+    if (!window.confirm(question)) return;
+
+    const { error } = await sb.rpc('global_lock', { p_locked: locked });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+
+    await loadRooms();
+    if (state.current && state.current.type === 'room') {
+      const fresh = state.rooms.find((room) => room.id === state.current.id);
+      if (fresh) state.current.room = fresh;
+    }
+    renderRooms();
+    renderHeader();
+    applyRoomTalkState();
+    toast(locked ? 'All rooms locked.' : 'All rooms unlocked.');
+  }
+
+  async function applyGlobalSlowmode() {
+    if (!isAdmin()) {
+      toast('Admins only.');
+      return;
+    }
+
+    const seconds = Math.min(300, Math.max(0, parseInt(ui.adminGlobalSlow.value, 10) || 0));
+    const { error } = await sb.rpc('global_slowmode', { p_seconds: seconds });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+
+    await loadRooms();
+    if (state.current && state.current.type === 'room') {
+      const fresh = state.rooms.find((room) => room.id === state.current.id);
+      if (fresh) state.current.room = fresh;
+    }
+    renderRooms();
+    applyRoomTalkState();
+    toast(seconds ? 'Slowmode set to ' + seconds + 's everywhere.' : 'Slowmode turned off everywhere.');
   }
 
   async function copyText(text) {
