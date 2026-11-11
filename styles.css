@@ -468,7 +468,7 @@ textarea { resize: vertical; width: 100%; }
 .profile-head-text { min-width: 0; padding-top: 2px; }
 .profile-name { font-weight: bold; font-size: 12.5px; word-break: break-word; }
 .profile-sub { color: var(--muted); font-size: 10.5px; }
-.profile-bio { padding: 0 8px 8px; font-size: 11px; color: #3a3a3a; line-height: 1.4; word-break: break-word; }
+.profile-bio { padding: 0 8px 8px; font-size: 11px; color: #3a3a3a; line-height: 1.4; word-break: break-word; white-space: pre-wrap; }
 .presence { font-size: 10px; margin-top: 1px; }
 .presence.on { color: #007700; }
 .presence.off { color: #808080; }
