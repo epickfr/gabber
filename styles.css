@@ -817,3 +817,161 @@ textarea { resize: vertical; width: 100%; }
   .field-row { flex-direction: column; align-items: stretch; gap: 2px; }
   .field-row label { flex: 0 0 auto; width: auto; text-align: left; }
 }
+
+.bell-wrap { position: relative; }
+
+.bell-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: #d4d0c8;
+  border: 1px solid #808080;
+  box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #a0a0a0;
+  color: #000080;
+  cursor: pointer;
+}
+.bell-btn:hover { background: #e8e8e8; }
+.bell-btn.has-unread { color: #cc0000; }
+
+.bell-count {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  background: #cc0000;
+  color: #ffffff;
+  border: 1px solid #600000;
+  font-family: Verdana, sans-serif;
+  font-size: 9px;
+  line-height: 12px;
+  text-align: center;
+}
+
+.bell-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1200;
+  width: min(320px, 88vw);
+  background: #ffffff;
+  border: 1px solid #000000;
+  box-shadow: 4px 4px 0 #808080;
+  color: #000000;
+}
+.bell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  background: #000080;
+  background: linear-gradient(#000080, #1084d0);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+.bell-head .linkbtn { color: #c8ccff; font-size: 10px; }
+.bell-head .linkbtn:hover { color: #ffffff; }
+.bell-list { max-height: 300px; overflow-y: auto; }
+.bell-item {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-bottom: 1px dotted #d0d0d0;
+  background: #ffffff;
+  color: #333333;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.bell-item:hover { background: #eef2ff; }
+.bell-item.unread { background: #fffbe0; }
+.bell-item:last-child { border-bottom: 0; }
+.bell-kind {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 0 3px;
+  border: 1px solid #808080;
+  background: #d4d0c8;
+  color: #000080;
+  font-size: 9px;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+.bell-body { display: block; margin-top: 2px; }
+.bell-time { display: block; margin-top: 2px; color: #808080; font-size: 9.5px; }
+.bell-empty { padding: 10px; color: #808080; font-size: 11px; font-style: italic; }
+
+.chat {
+  --room-accent: #000080;
+  --room-font: "Courier New", Courier, monospace;
+}
+.chat #channel-name { color: var(--room-accent); }
+.chat #channel-header { border-bottom-color: var(--room-accent); }
+#messages { font-family: var(--room-font); }
+
+.channel-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 5px;
+  border: 1px solid #808080;
+  object-fit: cover;
+  vertical-align: -3px;
+}
+.room-icon {
+  width: 14px;
+  height: 14px;
+  margin-right: 2px;
+  border: 1px solid #808080;
+  object-fit: cover;
+  vertical-align: -2px;
+}
+.side-item .room-mark.has-icon { width: 16px; flex: 0 0 16px; }
+
+.msg .body .mention {
+  padding: 0 1px;
+  background: #ffff99;
+  color: #000080;
+  font-weight: bold;
+}
+
+.room-icon-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.room-icon-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  border: 1px solid #808080;
+  background: #d4d0c8 center / cover no-repeat;
+  color: #808080;
+  font-size: 10px;
+}
+.short-input { width: 70px; flex: 0 0 auto; }
+#room-members .btn { flex: 0 0 auto; }
+.room-role {
+  font-size: 9.5px;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  color: #555555;
+}
+
+@media (max-width: 760px) {
+  .bell-panel {
+    position: fixed;
+    top: 58px;
+    right: 8px;
+    left: 8px;
+    width: auto;
+  }
+}

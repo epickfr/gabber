@@ -12,13 +12,16 @@ The design copies the everyday look of late-90s web chat rather than a modern "r
 - Direct messages between friends
 - Public rooms anyone can join
 - Private rooms with an invite code
+- Room owner tools: rename, topic, welcome line, room photo, accent colour, chat font, slowmode, who-can-talk mode, room mods, mute, and kick
+- Modcalls: anyone can call a mod into a room, staff see the open queue in the admin panel
+- Notification bell: mentions, new DMs, room changes, kicks/mutes, and a "while you were away" summary
 - Live messages, replies, and online dots via Supabase Realtime
 - Message deletion (your own messages; staff can delete anyone's in rooms)
 - Ranks shown next to names: `(owner)`, `(co-owner)`, `(admin)`, `(mod)`
 - Admin panel for staff: change ranks, ban/unban, announce, delete rooms, fun buttons
 - Bans: admins can stop a user from chatting, with a reason shown to that user
 - Announcements only render as system notices when the database marks them as system; typing `[ANNOUNCEMENT]` does nothing special
-- Chat commands such as `/me`, `/roll`, `/purge`, `/topic`, `/ban`, `/unban`, `/announce`
+- Chat commands such as `/me`, `/roll`, `/purge`, `/topic`, `/ban`, `/unban`, `/announce`, `/modcall`
 - Chat image embeds show a content warning and a **view anyway** button first
 - Chat history stored in Postgres, so Render redeploys do not wipe it
 - Row Level Security: users can only read rooms/DMs they belong to
@@ -51,11 +54,36 @@ After that, the owner and co-owners can change ranks in the admin panel. Bans fo
 | `/shrug`, `/tableflip`, `/unflip` | everyone | fun text |
 | `/roll 2d6`, `/coinflip`, `/8ball question` | everyone | dice, coin, magic 8-ball |
 | `/help` | everyone | list commands |
-| `/topic new topic` | staff or room owner | change the room topic |
+| `/topic new topic` | room owner, room mod, staff | change the room topic |
 | `/purge 10` | staff | delete the last N messages in the room |
 | `/announce text` | admins | post a system announcement |
 | `/ban username reason` | admins | stop a user from chatting |
 | `/unban username` | admins | let a banned user chat again |
+| `/kick username` | room owner, room mod, staff | remove someone from the room |
+| `/mute username`, `/unmute username` | room owner, room mod, staff | stop or allow talking in the room |
+| `/roommod username`, `/roomunmod username` | room owner, staff | give or remove the room-mod role |
+| `/invite username` | room owner, room mod, staff | add someone to the room |
+| `/slowmode 10` | room owner, room mod, staff | seconds between messages, 0 = off |
+| `/lock`, `/unlock` | room owner, staff | owner-only talk / back to everyone |
+| `/modcall reason` | everyone | send a call to all staff |
+| `/report username reason` | everyone | report a user to the mods |
+| `/resolve id` | staff | close an open modcall |
+| `/users`, `/whois username`, `/stats` | everyone | room and user info |
+| `/color #ff0000` | everyone | change your name colour |
+| `/clear` | everyone | clear your local message view |
+
+## Room owner tools
+
+Open a room and press **settings** (room owner or staff only). The room settings box lets you change:
+
+- name, topic, and a welcome line shown at the top of the room
+- room photo (shown in the room list and header)
+- accent colour and chat font (courier, serif, comic sans, typewriter)
+- who can talk: everyone, room mods only, or owner only
+- slowmode in seconds
+- members: mute, promote to room mod, or kick
+
+Room mods can use `/kick`, `/mute`, `/unmute`, `/invite`, and `/slowmode`, but cannot rename the room or change who can talk. A kick removes the person right away; public rooms auto-join when opened, so a kicked user can walk back into a public room. The notification bell shows mentions (`@username`), new DMs, room setting changes, kicks, mutes, and a summary of what happened while you were offline.
 
 ## Is it private?
 
@@ -70,8 +98,8 @@ The code is set up so that user data is private even though the site is publicly
 - Private rooms are invisible to non-members and require an invite code to join.
 - A user can only post as themselves, and only in rooms they joined.
 - Friend requests must be accepted through a server-side function; a user cannot forge an accepted friendship.
-- Image uploads go to the public `epick` bucket, but a user can only write inside their own `avatars/<uid>/`, `banners/<uid>/`, and `chat/<uid>/` folders.
-- Rank changes, bans, announcements, room deletion, and purges run through server-side functions that check the caller's rank.
+- Image uploads go to the public `epick` bucket, but a user can only write inside their own `avatars/<uid>/`, `banners/<uid>/`, `chat/<uid>/`, and `rooms/<uid>/` folders.
+- Rank changes, bans, announcements, room deletion, purges, room settings, room moderation, and modcalls run through server-side functions that check the caller's rank or room role.
 - The `service_role` key is never used in the frontend.
 
 ### About the Supabase key
@@ -115,7 +143,7 @@ EpickChat/
 
 1. Make a free account at <https://supabase.com> and create a new project.
 2. Open **SQL Editor**, paste the entire contents of `supabase/schema.sql`, and click **Run**.
-   - This creates the tables, policies, storage bucket, ranks, bans, admin functions, realtime setup, the `#lobby` room, and a trigger that gives every new user a profile.
+   - This creates the tables, policies, storage bucket, ranks, bans, room tools, modcalls, notifications, admin functions, realtime setup, the `#lobby` room, and a trigger that gives every new user a profile.
    - `schema.sql` is safe to re-run on an existing project: it adds the newer columns and policies without deleting your data.
 3. Open **Project Settings -> API** and copy:
    - **Project URL**
@@ -189,7 +217,7 @@ Static hosting cannot list a folder at runtime, so the picker only shows images 
 { id: 'my-banner', name: 'My Banner', file: 'banners/my-banner.png' }
 ```
 
-Reload the page and it appears in the profile editor. The six SVG presets and the three included PNGs (`bliss.png`, `nyancat.png`, `pipes.png`) are already listed.
+Reload the page and it appears in the profile editor. The three included PNGs (`bliss.png`, `nyancat.png`, `pipes.png`) are already listed.
 
 ## Troubleshooting
 

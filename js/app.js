@@ -71,6 +71,53 @@
     return fragment;
   }
 
+  function renderBody(text) {
+    const fragment = document.createDocumentFragment();
+    const raw = String(text || '');
+    const re = /(https?:\/\/[^\s<>"']+)|@([a-z0-9_]{3,20})/gi;
+    let last = 0;
+    let match;
+
+    while ((match = re.exec(raw))) {
+      let token = match[0];
+      let trailing = '';
+
+      if (match[1]) {
+        const punct = token.match(/[.,;:!?)\]]+$/);
+        if (punct) {
+          trailing = punct[0];
+          token = token.slice(0, -trailing.length);
+        }
+      }
+
+      if (match.index > last) {
+        fragment.append(document.createTextNode(raw.slice(last, match.index)));
+      }
+
+      if (match[1] && token.length >= 10) {
+        fragment.append(h('a', {
+          href: token,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          text: token
+        }));
+      } else if (match[1]) {
+        fragment.append(document.createTextNode(token));
+      } else {
+        fragment.append(h('span', { class: 'mention', text: match[0] }));
+      }
+
+      last = match.index + token.length;
+      if (trailing) {
+        fragment.append(document.createTextNode(trailing));
+        last += trailing.length;
+      }
+    }
+
+    if (last < raw.length) fragment.append(document.createTextNode(raw.slice(last)));
+    return fragment;
+  }
+
   const fmtTime = (iso) => {
     const d = new Date(iso);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -81,6 +128,14 @@
   const IMAGE_URL_RE = /(https?:\/\/[^\s<>"']+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\?[^\s<>"']*)?)/i;
 
   const AVATAR_COLORS = ['#0a7d32', '#7a2fbf', '#b8860b', '#c0392b', '#1f6feb', '#a0522d', '#008b8b', '#d2691e'];
+  const ROOM_FONTS = {
+    default: '"Courier New", Courier, monospace',
+    mono: '"Courier New", Courier, monospace',
+    serif: 'Georgia, "Times New Roman", serif',
+    comic: '"Comic Sans MS", "Comic Sans", cursive',
+    typewriter: '"Lucida Console", Monaco, monospace'
+  };
+  const ROOM_ACCENTS = ['#000080', '#7a1f1f', '#0a5d2a', '#5b2a86', '#006b6b', '#333333'];
   const AUTH_EMAIL_DOMAIN = '@epick.local';
   const authEmail = (username) => String(username || '').trim().toLowerCase() + AUTH_EMAIL_DOMAIN;
 
@@ -193,7 +248,14 @@
       viewingProfile: null,
       uploading: false,
       replyTo: null,
-      adminUsers: []
+      adminUsers: [],
+      notifications: [],
+      notifChannel: null,
+      awayDigest: null,
+      awayTimer: null,
+      roomDraft: null,
+      modCalls: [],
+      lastSent: new Map()
     };
   }
   let state = freshState();
@@ -269,8 +331,29 @@
     adminDone: $id('admin-done'),
     adminUsers: $id('admin-users'),
     adminRooms: $id('admin-rooms'),
+    adminModcalls: $id('admin-modcalls'),
     adminAnnounce: $id('admin-announce'),
     adminAnnounceBtn: $id('admin-announce-btn'),
+    bellBtn: $id('bell-btn'),
+    bellCount: $id('bell-count'),
+    bellPanel: $id('bell-panel'),
+    bellList: $id('bell-list'),
+    bellClear: $id('bell-clear'),
+    roomNotice: $id('room-notice'),
+    roomModal: $id('room-modal'),
+    roomClose: $id('room-close'),
+    roomCancel: $id('room-cancel'),
+    roomSave: $id('room-save'),
+    roomName: $id('room-name'),
+    roomTopic: $id('room-topic'),
+    roomWelcome: $id('room-welcome'),
+    roomIconFile: $id('room-icon-file'),
+    roomIconPreview: $id('room-icon-preview'),
+    roomAccents: $id('room-accents'),
+    roomFont: $id('room-font'),
+    roomMode: $id('room-mode'),
+    roomSlowmode: $id('room-slowmode'),
+    roomMembers: $id('room-members'),
     toast: $id('toast')
   };
 
@@ -350,6 +433,8 @@
       await loadFriends();
       await loadRooms();
       await loadThreads();
+      await buildAwayDigest();
+      await loadNotifications();
 
       ui.auth.hidden = true;
       ui.app.hidden = false;
@@ -358,6 +443,12 @@
 
       startPresence();
       startGlobalRealtime();
+      startNotificationRealtime();
+
+      clearInterval(state.awayTimer);
+      state.awayTimer = setInterval(() => {
+        if (state.me) localStorage.setItem(awayKey(), new Date().toISOString());
+      }, 60000);
       ui.statusUser.textContent = state.profile.username;
       setConnection('connected');
 
@@ -379,6 +470,8 @@
     if (state.convChannel) { try { sb.removeChannel(state.convChannel); } catch (_) {} }
     if (state.globalChannel) { try { sb.removeChannel(state.globalChannel); } catch (_) {} }
     if (state.presenceChannel) { try { sb.removeChannel(state.presenceChannel); } catch (_) {} }
+    if (state.notifChannel) { try { sb.removeChannel(state.notifChannel); } catch (_) {} }
+    clearInterval(state.awayTimer);
     state = freshState();
     ui.app.hidden = true;
     ui.auth.hidden = false;
@@ -386,6 +479,12 @@
     ui.adminBtn.hidden = true;
     ui.profileModal.hidden = true;
     ui.adminModal.hidden = true;
+    ui.roomModal.hidden = true;
+    ui.bellPanel.hidden = true;
+    ui.bellBtn.classList.remove('has-unread');
+    ui.bellList.replaceChildren();
+    ui.bellCount.hidden = true;
+    ui.roomNotice.hidden = true;
     ui.replyBar.hidden = true;
     ui.banNotice.hidden = true;
     ui.messageInput.disabled = false;
@@ -565,6 +664,8 @@
       if (event.key !== 'Escape') return;
       if (!ui.profileModal.hidden) closeProfileEditor();
       if (!ui.adminModal.hidden) closeAdminPanel();
+      if (!ui.roomModal.hidden) closeRoomSettings();
+      if (!ui.bellPanel.hidden) ui.bellPanel.hidden = true;
     });
     ui.profileBio.addEventListener('input', () => {
       ui.profileBioCount.textContent = String(ui.profileBio.value.length);
@@ -600,6 +701,64 @@
       state.editor.banner_url = url;
       renderEditorPreviews();
       toast('Banner uploaded. Press save profile.');
+    });
+
+    ui.bellBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleBell();
+    });
+    ui.bellClear.addEventListener('click', markAllRead);
+    ui.bellList.addEventListener('click', (event) => {
+      const item = event.target.closest('.bell-item');
+      if (!item) return;
+      openNotification(
+        item.dataset.notifId || '',
+        item.dataset.notifRoom || '',
+        item.dataset.notifKind || '',
+        item.dataset.notifActor || ''
+      );
+    });
+    document.addEventListener('click', (event) => {
+      if (!ui.bellPanel.hidden && !event.target.closest('.bell-wrap')) {
+        ui.bellPanel.hidden = true;
+      }
+    });
+
+    ui.roomClose.addEventListener('click', closeRoomSettings);
+    ui.roomCancel.addEventListener('click', closeRoomSettings);
+    ui.roomSave.addEventListener('click', saveRoomSettings);
+    ui.roomModal.addEventListener('click', (event) => {
+      if (event.target === ui.roomModal) closeRoomSettings();
+    });
+    ui.roomAccents.addEventListener('click', (event) => {
+      const swatch = event.target.closest('[data-room-accent]');
+      if (!swatch || !state.roomDraft) return;
+      state.roomDraft.accent = swatch.dataset.roomAccent;
+      renderRoomSettings();
+    });
+    ui.roomIconFile.addEventListener('change', async () => {
+      const file = ui.roomIconFile.files && ui.roomIconFile.files[0];
+      ui.roomIconFile.value = '';
+      if (!file || !state.roomDraft) return;
+      const url = await uploadImage(file, 'rooms');
+      if (!url) return;
+      state.roomDraft.icon_url = url;
+      renderRoomSettings();
+      toast('Room photo uploaded. Press save settings.');
+    });
+    ui.roomMembers.addEventListener('click', (event) => {
+      const kick = event.target.closest('[data-room-kick]');
+      if (kick) {
+        kickRoomMember(kick.dataset.roomKick);
+        return;
+      }
+      const mute = event.target.closest('[data-room-mute]');
+      if (mute) {
+        toggleRoomMute(mute.dataset.roomMute, mute.dataset.muted !== '1');
+        return;
+      }
+      const role = event.target.closest('[data-room-role]');
+      if (role) setRoomRole(role.dataset.roomRole, role.dataset.role);
     });
 
     ui.imageBtn.addEventListener('click', () => ui.imageFile.click());
@@ -662,6 +821,10 @@
       const button = event.target.closest('[data-admin-room]');
       if (button) adminDeleteRoom(button.dataset.adminRoom);
     });
+    ui.adminModcalls.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-modcall]');
+      if (button) resolveModcall(button.dataset.modcall);
+    });
 
     ui.composer.addEventListener('submit', sendMessage);
 
@@ -701,6 +864,8 @@
       if (action === 'leave-room') confirmLeaveRoom();
       if (action === 'delete-room') confirmDeleteRoom();
       if (action === 'unfriend') confirmRemoveFriend();
+      if (action === 'room-settings') openRoomSettings();
+      if (action === 'call-mod') sendModcall();
     });
 
     ui.sidebarToggle.addEventListener('click', () => {
@@ -716,9 +881,11 @@
     });
 
     window.addEventListener('beforeunload', () => {
+      if (state.me) localStorage.setItem(awayKey(), new Date().toISOString());
       if (state.convChannel) sb.removeChannel(state.convChannel);
       if (state.globalChannel) sb.removeChannel(state.globalChannel);
       if (state.presenceChannel) sb.removeChannel(state.presenceChannel);
+      if (state.notifChannel) sb.removeChannel(state.notifChannel);
     });
   }
 
@@ -747,6 +914,285 @@
   function updateTitle() {
     const total = Array.from(state.unread.values()).reduce((sum, n) => sum + n, 0);
     document.title = total ? `(${total}) Epick Chat` : 'Epick Chat - free web chat';
+  }
+
+  function awayKey() {
+    return 'epickchat:lastseen:' + state.me.id;
+  }
+
+  async function buildAwayDigest() {
+    const since = localStorage.getItem(awayKey());
+    localStorage.setItem(awayKey(), new Date().toISOString());
+    if (!since) return;
+
+    const roomIds = Array.from(state.myRoomIds);
+    const threadIds = Array.from(state.threadToFriend.keys());
+    let roomCount = 0;
+    let mentionCount = 0;
+    let dmCount = 0;
+
+    if (roomIds.length) {
+      const { count } = await sb.from('messages')
+        .select('id', { count: 'exact', head: true })
+        .in('room_id', roomIds)
+        .gt('created_at', since);
+      roomCount = count || 0;
+
+      const { count: mentions } = await sb.from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', state.me.id)
+        .eq('kind', 'mention')
+        .gt('created_at', since);
+      mentionCount = mentions || 0;
+    }
+
+    if (threadIds.length) {
+      const { count } = await sb.from('dm_messages')
+        .select('id', { count: 'exact', head: true })
+        .in('thread_id', threadIds)
+        .gt('created_at', since);
+      dmCount = count || 0;
+    }
+
+    const parts = [];
+    if (roomCount) parts.push(roomCount + ' room message' + (roomCount === 1 ? '' : 's'));
+    if (mentionCount) parts.push(mentionCount + ' mention' + (mentionCount === 1 ? '' : 's'));
+    if (dmCount) parts.push(dmCount + ' direct message' + (dmCount === 1 ? '' : 's'));
+
+    if (parts.length) {
+      state.awayDigest = {
+        id: 'away',
+        kind: 'away',
+        body: 'while you were away: ' + parts.join(', '),
+        created_at: new Date().toISOString()
+      };
+      renderBell();
+    }
+  }
+
+  async function loadNotifications() {
+    const { data, error } = await sb
+      .from('notifications')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(60);
+    if (error) {
+      console.error('[epick-chat] notifications', error);
+      return;
+    }
+    state.notifications = data || [];
+    renderBell();
+  }
+
+  function notificationLabel(kind) {
+    const labels = {
+      mention: 'mention',
+      dm: 'dm',
+      room: 'room',
+      kick: 'kicked',
+      mute: 'mute',
+      role: 'rank',
+      invite: 'invite',
+      modcall: 'modcall',
+      'modcall-done': 'mod',
+      away: 'away'
+    };
+    return labels[kind] || 'note';
+  }
+
+  function notificationNode(item, local) {
+    const seen = local ? true : Boolean(item.seen);
+    return h('button', {
+      type: 'button',
+      class: 'bell-item' + (seen ? '' : ' unread'),
+      'data-notif-id': local ? '' : String(item.id),
+      'data-notif-room': item.room_id || '',
+      'data-notif-kind': item.kind || '',
+      'data-notif-actor': item.actor || ''
+    },
+      h('span', { class: 'bell-kind', text: notificationLabel(item.kind) }),
+      h('span', { class: 'bell-body', text: item.body }),
+      h('span', { class: 'bell-time', text: item.created_at ? fmtTime(item.created_at) : '' })
+    );
+  }
+
+  function renderBell() {
+    const unread = state.notifications.filter((item) => !item.seen).length;
+    ui.bellCount.hidden = !unread;
+    ui.bellCount.textContent = String(unread);
+    ui.bellBtn.classList.toggle('has-unread', unread > 0);
+
+    ui.bellList.replaceChildren();
+    let count = 0;
+
+    if (state.awayDigest) {
+      ui.bellList.append(notificationNode(state.awayDigest, true));
+      count++;
+    }
+
+    for (const item of state.notifications) {
+      ui.bellList.append(notificationNode(item, false));
+      count++;
+    }
+
+    if (!count) {
+      ui.bellList.append(h('div', { class: 'bell-empty', text: 'nothing new.' }));
+    }
+  }
+
+  function toggleBell() {
+    ui.bellPanel.hidden = !ui.bellPanel.hidden;
+  }
+
+  async function markAllRead() {
+    state.awayDigest = null;
+    if (!state.notifications.some((item) => !item.seen)) {
+      renderBell();
+      return;
+    }
+
+    const { error } = await sb
+      .from('notifications')
+      .update({ seen: true })
+      .eq('user_id', state.me.id)
+      .eq('seen', false);
+
+    if (error) {
+      toast(error.message);
+      return;
+    }
+
+    state.notifications = state.notifications.map((item) => Object.assign({}, item, { seen: true }));
+    renderBell();
+  }
+
+  async function markConversationSeen(match) {
+    let query = sb.from('notifications')
+      .update({ seen: true })
+      .eq('user_id', state.me.id)
+      .eq('seen', false);
+
+    for (const key of Object.keys(match)) query = query.eq(key, match[key]);
+
+    const { error } = await query;
+    if (error) return;
+
+    state.notifications = state.notifications.map((item) => {
+      const hit = Object.keys(match).every((key) => String(item[key]) === String(match[key]));
+      return hit ? Object.assign({}, item, { seen: true }) : item;
+    });
+    renderBell();
+  }
+
+  async function openNotification(id, roomId, kind, actor) {
+    if (id) {
+      const { error } = await sb.from('notifications').update({ seen: true }).eq('id', id);
+      if (!error) {
+        const item = state.notifications.find((entry) => String(entry.id) === String(id));
+        if (item) item.seen = true;
+      }
+    }
+
+    if (kind === 'away') state.awayDigest = null;
+    renderBell();
+    ui.bellPanel.hidden = true;
+
+    if (kind === 'kick') {
+      toast('You were removed from that room.');
+      return;
+    }
+
+    if (kind === 'dm' && actor) {
+      await openDM(actor);
+      return;
+    }
+
+    if (roomId) {
+      const room = state.rooms.find((entry) => entry.id === roomId);
+      if (room) {
+        await openRoom(room);
+        return;
+      }
+      toast('That room is not available to you anymore.');
+      return;
+    }
+
+    if (kind === 'modcall' && isStaff()) openAdminPanel();
+  }
+
+  function startNotificationRealtime() {
+    if (state.notifChannel || !state.me) return;
+
+    const channel = sb
+      .channel('epickchat-notif-' + state.me.id)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: 'user_id=eq.' + state.me.id
+      }, (payload) => {
+        const item = payload.new;
+        if (!item) return;
+
+        state.notifications.unshift(item);
+        state.notifications = state.notifications.slice(0, 60);
+        renderBell();
+
+        const viewing = state.current && (
+          (item.room_id && state.current.type === 'room' && state.current.id === item.room_id) ||
+          (item.kind === 'dm' && state.current.type === 'dm' &&
+            state.threadToFriend.get(state.current.id) === item.actor)
+        );
+        if (viewing) markConversationSeen({ id: item.id });
+
+        if (item.kind === 'mention') toast('You were mentioned in chat.');
+        if (item.kind === 'modcall' && isStaff()) toast('New modcall.');
+
+        if (item.kind === 'kick' && item.room_id) {
+          state.myRoomIds.delete(item.room_id);
+          renderRooms();
+          reloadRoomsSoon();
+          if (state.current && state.current.type === 'room' && state.current.id === item.room_id) {
+            state.current = null;
+            state.messages = [];
+            state.members = [];
+            state.replyTo = null;
+            applyRoomTheme(null);
+            applyRoomTalkState();
+            renderReplyBar();
+            renderHeader();
+            renderMessages();
+            renderMembers();
+            toast('You were removed from that room.');
+          }
+        }
+
+        if (item.kind === 'mute' || item.kind === 'role') {
+          if (state.current && state.current.type === 'room' && state.current.id === item.room_id) {
+            loadMembers(item.room_id).then(() => {
+              renderMembers();
+              renderHeader();
+              applyRoomTalkState();
+            }).catch(() => {});
+          }
+        }
+
+        if (item.kind === 'room' || item.kind === 'invite') {
+          reloadRoomsSoon();
+          if (state.current && state.current.type === 'room' && state.current.id === item.room_id) {
+            loadMembers(item.room_id).then(() => {
+              renderMembers();
+              applyRoomTalkState();
+            }).catch(() => {});
+          }
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mod_calls' }, () => {
+        if (isStaff()) loadModCalls();
+      })
+      .subscribe();
+
+    state.notifChannel = channel;
   }
 
   async function loadFriends() {
@@ -817,7 +1263,7 @@
   async function loadMembers(roomId) {
     const { data, error } = await sb
       .from('room_members')
-      .select('user_id, joined_at, profile:profiles!room_members_user_id_fkey(*)')
+      .select('user_id, joined_at, muted, room_role, profile:profiles!room_members_user_id_fkey(*)')
       .eq('room_id', roomId);
     if (error) {
       console.error('[epick-chat] members', error);
@@ -826,7 +1272,12 @@
     if (!state.current || state.current.type !== 'room' || state.current.id !== roomId) return;
 
     state.members = (data || [])
-      .map((row) => row.profile)
+      .map((row) => row.profile
+        ? Object.assign({}, row.profile, {
+            room_role: row.room_role || 'member',
+            muted: Boolean(row.muted)
+          })
+        : null)
       .filter(Boolean);
 
     for (const person of state.members) state.people.set(person.id, person);
@@ -923,7 +1374,11 @@
       'data-room-id': room.id,
       title: (room.topic || '') + (room.is_private ? ' [private room]' : '')
     },
-      h('span', { class: 'room-mark', text: room.is_private ? '*' : '#' }),
+      h('span', { class: 'room-mark' + (room.icon_url ? ' has-icon' : '') },
+        room.icon_url
+          ? h('img', { class: 'room-icon', src: room.icon_url, alt: '' })
+          : document.createTextNode(room.is_private ? '*' : '#')
+      ),
       h('span', { class: 'label', text: room.name }),
       unread ? h('span', { class: 'badge', text: String(unread) })
              : h('span', { class: 'count', text: '(' + count + ')' })
@@ -1012,7 +1467,11 @@
 
     if (current.type === 'room') {
       const room = current.room;
-      ui.channelName.textContent = (room.is_private ? '*' : '#') + ' ' + room.name;
+      ui.channelName.replaceChildren();
+      if (room.icon_url) {
+        ui.channelName.append(h('img', { class: 'channel-icon', src: room.icon_url, alt: '' }));
+      }
+      ui.channelName.append(document.createTextNode((room.is_private ? '*' : '#') + ' ' + room.name));
       ui.channelTopic.textContent = room.topic || 'no topic set';
 
       if (room.is_private && room.invite_code) {
@@ -1026,6 +1485,18 @@
             'data-code': room.invite_code,
             text: 'copy'
           })
+        );
+      }
+
+      ui.channelActions.append(
+        document.createTextNode(' '),
+        h('button', { type: 'button', class: 'btn micro', 'data-action': 'call-mod', text: 'call mod' })
+      );
+
+      if (canEditRoom(room)) {
+        ui.channelActions.append(
+          document.createTextNode(' '),
+          h('button', { type: 'button', class: 'btn micro', 'data-action': 'room-settings', text: 'settings' })
         );
       }
 
@@ -1070,10 +1541,10 @@
       }),
       isSystem ? null : rankBadge(person),
       isSystem
-        ? h('span', { class: 'body system-body' }, linkify(rawBody))
+        ? h('span', { class: 'body system-body' }, renderBody(rawBody))
         : onlyImage
           ? h('span', { class: 'body muted', text: 'shared an image' })
-          : h('span', { class: 'body' }, linkify(rawBody))
+          : h('span', { class: 'body' }, renderBody(rawBody))
     );
 
     const quote = message.reply_snippet
@@ -1120,11 +1591,31 @@
     }
 
     if (!state.messages.length) {
+      const room = currentRoom();
+      if (room && room.welcome) {
+        ui.messages.append(h('div', { class: 'msg system' },
+          h('div', { class: 'msg-main' },
+            h('div', { class: 'msg-line' },
+              h('span', { class: 'body system-body', text: room.welcome })
+            )
+          )
+        ));
+      }
       ui.messages.append(h('div', { class: 'empty', text: 'no messages yet. say something!' }));
       return;
     }
 
     const fragment = document.createDocumentFragment();
+    const room = currentRoom();
+    if (room && room.welcome) {
+      fragment.append(h('div', { class: 'msg system' },
+        h('div', { class: 'msg-main' },
+          h('div', { class: 'msg-line' },
+            h('span', { class: 'body system-body', text: room.welcome })
+          )
+        )
+      ));
+    }
     for (const message of state.messages) fragment.append(messageNode(message));
     ui.messages.append(fragment);
 
@@ -1195,6 +1686,81 @@
     ui.statusUser.textContent = state.profile ? state.profile.username : 'guest';
   }
 
+  function currentRoom() {
+    return state.current && state.current.type === 'room' ? state.current.room : null;
+  }
+
+  function currentMember() {
+    return state.members.find((person) => person.id === state.me.id) || null;
+  }
+
+  function canModerateRoom(room) {
+    if (!room || isBanned()) return false;
+    if (isStaff()) return true;
+    if (room.owner === state.me.id) return true;
+    const member = currentMember();
+    return Boolean(member && member.room_role === 'mod');
+  }
+
+  function canEditRoom(room) {
+    if (!room || isBanned()) return false;
+    return isStaff() || room.owner === state.me.id;
+  }
+
+  function roomTalkBlock(room) {
+    if (!room || isBanned()) return '';
+    if (isStaff() || room.owner === state.me.id) return '';
+    const member = currentMember();
+    if (!member) return '';
+    if (member.muted) return 'you are muted in this room.';
+    if (room.post_mode === 'owner') return 'only the room owner can talk here right now.';
+    if (room.post_mode === 'mods' && member.room_role !== 'mod') {
+      return 'only room mods can talk here right now.';
+    }
+    return '';
+  }
+
+  function roomFontStack(key) {
+    return ROOM_FONTS[key] || ROOM_FONTS.default;
+  }
+
+  function applyRoomTheme(room) {
+    const chat = document.querySelector('.chat');
+    if (!chat) return;
+    if (!room) {
+      chat.style.removeProperty('--room-accent');
+      chat.style.removeProperty('--room-font');
+      return;
+    }
+    chat.style.setProperty('--room-accent', room.accent || '#000080');
+    chat.style.setProperty('--room-font', roomFontStack(room.font));
+  }
+
+  function applyRoomTalkState() {
+    const room = currentRoom();
+    const banned = isBanned();
+    const block = room ? roomTalkBlock(room) : '';
+
+    ui.roomNotice.hidden = !block;
+    ui.roomNotice.textContent = block;
+
+    const off = banned || Boolean(block);
+    ui.messageInput.disabled = off;
+    ui.imageBtn.disabled = off;
+    ui.composerSubmit.disabled = off;
+
+    if (!banned) {
+      ui.messageInput.placeholder = block || 'type a message, /help for commands';
+    }
+  }
+
+  function slowmodeRemaining(room) {
+    if (!room || !room.slowmode) return 0;
+    if (isStaff() || room.owner === state.me.id) return 0;
+    const last = state.lastSent.get(room.id) || 0;
+    return Math.max(0, room.slowmode * 1000 - (Date.now() - last));
+  }
+
   async function restoreLastConversation() {
     const last = localStorage.getItem('epickchat:last');
 
@@ -1253,6 +1819,9 @@
     state.unread.delete('room:' + room.id);
     localStorage.setItem('epickchat:last', 'room:' + room.id);
 
+    applyRoomTheme(room);
+    applyRoomTalkState();
+    markConversationSeen({ room_id: room.id });
     renderHeader();
     renderMessages();
     renderRooms();
@@ -1268,6 +1837,7 @@
     renderMessages(true);
     renderMembers();
     renderHeader();
+    applyRoomTalkState();
     focusComposer();
     if (isMobile()) ui.appBody.classList.remove('sidebar-open');
   }
@@ -1293,6 +1863,9 @@
     state.unread.delete('friend:' + friendId);
     localStorage.setItem('epickchat:last', 'dm:' + friendId);
 
+    applyRoomTheme(null);
+    applyRoomTalkState();
+    markConversationSeen({ kind: 'dm', actor: friendId });
     renderHeader();
     renderMessages();
     renderRooms();
@@ -1446,6 +2019,19 @@
       ? { room_id: current.id, sender: state.me.id, body }
       : { thread_id: current.id, sender: state.me.id, body };
 
+    if (current.type === 'room') {
+      const block = roomTalkBlock(current.room);
+      if (block) {
+        toast(block);
+        return false;
+      }
+      const remain = slowmodeRemaining(current.room);
+      if (remain > 0) {
+        toast('Slowmode: wait ' + Math.ceil(remain / 1000) + 's.');
+        return false;
+      }
+    }
+
     if (state.replyTo) {
       payload.reply_to = state.replyTo.id;
       payload.reply_snippet = (state.replyTo.person ? state.replyTo.person.username : 'unknown') +
@@ -1460,6 +2046,8 @@
 
     state.replyTo = null;
     renderReplyBar();
+
+    if (current.type === 'room') state.lastSent.set(current.id, Date.now());
 
     if (!state.current || state.current.type !== current.type || state.current.id !== current.id) return true;
     await addIncomingMessage(data);
@@ -1593,17 +2181,22 @@
       renderRooms();
 
       if (state.current && state.current.type === 'room') {
-        const stillThere = state.rooms.some((room) => room.id === state.current.id);
+        const stillThere = state.rooms.find((room) => room.id === state.current.id);
         if (!stillThere) {
           state.current = null;
+          applyRoomTheme(null);
+          applyRoomTalkState();
           renderHeader();
           renderMessages();
           renderMembers();
           return;
         }
+        state.current.room = stillThere;
+        applyRoomTheme(stillThere);
         await loadMembers(state.current.id);
         renderMembers();
         renderHeader();
+        applyRoomTalkState();
       }
     } catch (error) {
       console.error('[epick-chat] reload rooms', error);
@@ -2086,6 +2679,321 @@
     }
 
     updateAdminButton();
+    applyRoomTalkState();
+  }
+
+  async function openRoomSettings() {
+    const room = currentRoom();
+    if (!room) return;
+    if (!canEditRoom(room)) {
+      toast('Room owner only.');
+      return;
+    }
+
+    state.roomDraft = {
+      name: room.name,
+      topic: room.topic || '',
+      welcome: room.welcome || '',
+      icon_url: room.icon_url || '',
+      accent: room.accent || '#000080',
+      font: room.font || 'default',
+      post_mode: room.post_mode || 'open',
+      slowmode: room.slowmode || 0
+    };
+
+    ui.roomModal.hidden = false;
+    renderRoomSettings();
+
+    await loadMembers(room.id);
+    renderRoomSettings();
+  }
+
+  function closeRoomSettings() {
+    state.roomDraft = null;
+    ui.roomModal.hidden = true;
+  }
+
+  function renderRoomSettings() {
+    const draft = state.roomDraft;
+    if (!draft) return;
+
+    ui.roomName.value = draft.name;
+    ui.roomTopic.value = draft.topic;
+    ui.roomWelcome.value = draft.welcome;
+    ui.roomFont.value = draft.font;
+    ui.roomMode.value = draft.post_mode;
+    ui.roomSlowmode.value = String(draft.slowmode);
+
+    ui.roomIconPreview.setAttribute('style', draft.icon_url
+      ? 'background-image:url("' + draft.icon_url.replace(/"/g, '%22') + '")'
+      : '');
+    ui.roomIconPreview.textContent = draft.icon_url ? '' : 'no photo';
+
+    ui.roomAccents.replaceChildren(...ROOM_ACCENTS.map((color) => h('button', {
+      type: 'button',
+      class: 'swatch' + (color === draft.accent ? ' active' : ''),
+      style: 'background-color:' + color,
+      'data-room-accent': color,
+      title: color,
+      'aria-label': 'accent colour ' + color
+    })));
+
+    renderRoomMemberList();
+  }
+
+  function renderRoomMemberList() {
+    const room = currentRoom();
+    ui.roomMembers.replaceChildren();
+    if (!room) return;
+
+    const canRole = isStaff() || room.owner === state.me.id;
+    const sorted = [...state.members].sort((a, b) => {
+      if (a.id === room.owner) return -1;
+      if (b.id === room.owner) return 1;
+      return a.username.localeCompare(b.username);
+    });
+
+    for (const person of sorted) {
+      const isOwner = person.id === room.owner;
+      const isMe = person.id === state.me.id;
+      const role = isOwner ? 'owner' : (person.room_role || 'member');
+      const row = h('div', { class: 'admin-user' },
+        avatarNode(person, 'tiny'),
+        h('span', { class: 'admin-name', text: person.username }),
+        h('span', { class: 'room-role', text: role }),
+        person.muted ? h('span', { class: 'ban-mark', text: 'muted' }) : null
+      );
+
+      if (!isOwner) {
+        row.append(h('button', {
+          type: 'button',
+          class: 'btn micro',
+          'data-room-mute': person.id,
+          'data-muted': person.muted ? '1' : '0',
+          text: person.muted ? 'unmute' : 'mute'
+        }));
+
+        if (canRole && !isMe) {
+          row.append(h('button', {
+            type: 'button',
+            class: 'btn micro',
+            'data-room-role': person.id,
+            'data-role': role === 'mod' ? 'member' : 'mod',
+            text: role === 'mod' ? 'unmod' : 'mod'
+          }));
+        }
+
+        if (!isMe) {
+          row.append(h('button', {
+            type: 'button',
+            class: 'btn micro danger',
+            'data-room-kick': person.id,
+            text: 'kick'
+          }));
+        }
+      }
+
+      ui.roomMembers.append(row);
+    }
+
+    if (!sorted.length) {
+      ui.roomMembers.append(h('div', { class: 'muted tiny-pad', text: 'no members loaded' }));
+    }
+  }
+
+  async function saveRoomSettings() {
+    const room = currentRoom();
+    const draft = state.roomDraft;
+    if (!room || !draft) return;
+
+    const name = ui.roomName.value.trim().slice(0, 32);
+    if (!name) {
+      toast('Room name is required.');
+      return;
+    }
+
+    const topic = ui.roomTopic.value.trim().slice(0, 200);
+    const welcome = ui.roomWelcome.value.trim().slice(0, 200);
+    const font = ui.roomFont.value;
+    const mode = ui.roomMode.value;
+    const slow = Math.min(300, Math.max(0, parseInt(ui.roomSlowmode.value, 10) || 0));
+
+    ui.roomSave.disabled = true;
+    const { error } = await sb.rpc('room_update_settings', {
+      p_room: room.id,
+      p_name: name,
+      p_topic: topic,
+      p_icon: draft.icon_url || '',
+      p_accent: draft.accent,
+      p_font: font,
+      p_post_mode: mode,
+      p_slowmode: slow,
+      p_welcome: welcome
+    });
+    ui.roomSave.disabled = false;
+
+    if (error) {
+      toast(error.message);
+      return;
+    }
+
+    Object.assign(room, {
+      name,
+      topic,
+      icon_url: draft.icon_url || null,
+      accent: draft.accent,
+      font,
+      post_mode: mode,
+      slowmode: slow,
+      welcome
+    });
+
+    state.roomDraft = null;
+    ui.roomModal.hidden = true;
+    applyRoomTheme(room);
+    applyRoomTalkState();
+    renderRooms();
+    renderHeader();
+    renderMessages();
+    toast('Room settings saved.');
+  }
+
+  async function kickRoomMember(userId) {
+    const room = currentRoom();
+    if (!room) return;
+    const person = state.members.find((entry) => entry.id === userId);
+    if (!window.confirm('Remove ' + (person ? person.username : 'this user') + ' from #' + room.name + '?')) return;
+
+    const { error } = await sb.rpc('room_kick', { p_room: room.id, p_user: userId });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+
+    await loadMembers(room.id);
+    renderMembers();
+    renderRoomMemberList();
+    renderHeader();
+    toast('Member removed.');
+  }
+
+  async function toggleRoomMute(userId, muted) {
+    const room = currentRoom();
+    if (!room) return;
+
+    const { error } = await sb.rpc('room_set_muted', {
+      p_room: room.id,
+      p_user: userId,
+      p_muted: Boolean(muted)
+    });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+
+    await loadMembers(room.id);
+    renderMembers();
+    renderRoomMemberList();
+    applyRoomTalkState();
+    toast(muted ? 'Member muted.' : 'Member unmuted.');
+  }
+
+  async function setRoomRole(userId, role) {
+    const room = currentRoom();
+    if (!room) return;
+
+    const { error } = await sb.rpc('room_set_role', {
+      p_room: room.id,
+      p_user: userId,
+      p_role: role
+    });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+
+    await loadMembers(room.id);
+    renderMembers();
+    renderRoomMemberList();
+    renderHeader();
+    toast(role === 'mod' ? 'Room mod added.' : 'Room mod removed.');
+  }
+
+  async function sendModcall() {
+    const room = currentRoom();
+    if (!room) {
+      toast('Open a room first.');
+      return;
+    }
+
+    const reason = window.prompt('What do you need a mod for?');
+    if (reason === null) return;
+    const text = reason.trim();
+    if (!text) return;
+
+    const { error } = await sb.rpc('send_modcall', { p_room: room.id, p_body: text });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+    toast('Modcall sent. A mod will see it.');
+  }
+
+  async function loadModCalls() {
+    if (!isStaff()) {
+      state.modCalls = [];
+      renderModCalls();
+      return;
+    }
+
+    const { data, error } = await sb
+      .from('mod_calls')
+      .select('id, room_id, user_id, body, status, created_at, user:profiles!mod_calls_user_id_fkey(username)')
+      .eq('status', 'open')
+      .order('created_at', { ascending: true })
+      .limit(50);
+
+    if (error) {
+      console.error('[epick-chat] modcalls', error);
+      return;
+    }
+
+    state.modCalls = data || [];
+    renderModCalls();
+  }
+
+  function renderModCalls() {
+    ui.adminModcalls.replaceChildren();
+
+    if (!state.modCalls.length) {
+      ui.adminModcalls.append(h('div', { class: 'muted tiny-pad', text: 'no open modcalls' }));
+      return;
+    }
+
+    for (const call of state.modCalls) {
+      const room = state.rooms.find((entry) => entry.id === call.room_id);
+      const who = call.user ? call.user.username : 'someone';
+      ui.adminModcalls.append(h('div', { class: 'admin-room' },
+        h('span', { class: 'admin-name', text: who }),
+        h('span', { class: 'muted tiny-pad', text: '#' + (room ? room.name : 'room') + ' - ' + call.body }),
+        h('button', {
+          type: 'button',
+          class: 'btn micro',
+          'data-modcall': call.id,
+          text: 'resolve'
+        })
+      ));
+    }
+  }
+
+  async function resolveModcall(id) {
+    const { error } = await sb.rpc('resolve_modcall', { p_id: Number(id) });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+    toast('Modcall resolved.');
+    await loadModCalls();
   }
 
   function canDeleteMessage(message) {
@@ -2206,9 +3114,9 @@
     }
 
     if (name === 'help') {
-      toast('/me /shrug /tableflip /unflip /roll /coinflip /8ball /help' +
+      toast('/me /shrug /tableflip /unflip /roll /coinflip /8ball /users /whois /stats /color /clear /modcall /report /help' +
         (isStaff() ? ' /purge /topic' : '') +
-        (isAdmin() ? ' /announce /ban /unban' : ''));
+        (isAdmin() ? ' /announce /ban /unban /resolve' : ''));
       return true;
     }
 
@@ -2258,7 +3166,7 @@
     if (name === 'topic') {
       if (!state.current || state.current.type !== 'room') { toast('Open a room first.'); return true; }
       const room = state.current.room;
-      if (!isStaff() && room.owner !== state.me.id) { toast('Not allowed.'); return true; }
+      if (!canModerateRoom(room)) { toast('Not allowed.'); return true; }
       const { error } = await sb.rpc('set_room_topic', {
         p_room: room.id,
         p_topic: rest
@@ -2279,6 +3187,138 @@
         p_text: rest
       });
       if (error) { toast(error.message); return true; }
+      return true;
+    }
+
+    const room = currentRoom();
+
+    if (name === 'invite') {
+      if (!room) { toast('Open a room first.'); return true; }
+      if (!canModerateRoom(room)) { toast('Room mods only.'); return true; }
+      if (!rest) { toast('usage: /invite username'); return true; }
+      const { error } = await sb.rpc('room_invite', { p_room: room.id, p_username: rest });
+      if (error) toast(error.message);
+      else toast('Added ' + rest + ' to the room.');
+      return true;
+    }
+
+    if (name === 'kick' || name === 'mute' || name === 'unmute' ||
+        name === 'roommod' || name === 'roomunmod') {
+      if (!room) { toast('Open a room first.'); return true; }
+      if (!canModerateRoom(room)) { toast('Room mods only.'); return true; }
+      if (!rest) { toast('usage: /' + name + ' username'); return true; }
+
+      const target = state.members.find((person) =>
+        person.username.toLowerCase() === rest.toLowerCase());
+      if (!target) { toast('No such member in this room.'); return true; }
+
+      if (name === 'kick') await kickRoomMember(target.id);
+      if (name === 'mute') await toggleRoomMute(target.id, true);
+      if (name === 'unmute') await toggleRoomMute(target.id, false);
+      if (name === 'roommod') await setRoomRole(target.id, 'mod');
+      if (name === 'roomunmod') await setRoomRole(target.id, 'member');
+      return true;
+    }
+
+    if (name === 'slowmode') {
+      if (!room) { toast('Open a room first.'); return true; }
+      if (!canModerateRoom(room)) { toast('Room mods only.'); return true; }
+      const seconds = Math.min(300, Math.max(0, parseInt(rest, 10) || 0));
+      const { error } = await sb.rpc('room_set_slowmode', { p_room: room.id, p_seconds: seconds });
+      if (error) { toast(error.message); return true; }
+      room.slowmode = seconds;
+      toast(seconds ? 'Slowmode set to ' + seconds + 's.' : 'Slowmode off.');
+      return true;
+    }
+
+    if (name === 'lock' || name === 'unlock') {
+      if (!room) { toast('Open a room first.'); return true; }
+      if (!isStaff() && room.owner !== state.me.id) { toast('Room owner only.'); return true; }
+      const mode = name === 'lock' ? 'owner' : 'open';
+      const { error } = await sb.rpc('room_set_post_mode', { p_room: room.id, p_mode: mode });
+      if (error) { toast(error.message); return true; }
+      room.post_mode = mode;
+      applyRoomTalkState();
+      toast(name === 'lock' ? 'Room locked to the owner.' : 'Room unlocked.');
+      return true;
+    }
+
+    if (name === 'users') {
+      if (!room) { toast('Open a room first.'); return true; }
+      const names = state.members.map((person) => person.username).sort();
+      toast(names.length ? names.join(', ') : 'nobody here.');
+      return true;
+    }
+
+    if (name === 'whois') {
+      if (!rest) { toast('usage: /whois username'); return true; }
+      const { data: person, error } = await sb.from('profiles')
+        .select('username, display_name, rank, created_at, banned')
+        .eq('username', rest.toLowerCase())
+        .maybeSingle();
+      if (error) { toast(error.message); return true; }
+      if (!person) { toast('No such user.'); return true; }
+      toast(person.username + ' (' + person.rank + ') - ' +
+        (person.display_name || 'no display name') +
+        (person.banned ? ' [banned]' : '') +
+        ' - joined ' + new Date(person.created_at).toLocaleDateString());
+      return true;
+    }
+
+    if (name === 'stats') {
+      if (!room) { toast('Open a room first.'); return true; }
+      const modeText = room.post_mode === 'owner'
+        ? 'owner only'
+        : room.post_mode === 'mods' ? 'room mods' : 'everyone';
+      toast('#' + room.name + ' - ' + state.members.length + ' members - ' +
+        state.messages.length + ' messages loaded - talk: ' + modeText +
+        ' - slowmode: ' + (room.slowmode || 0) + 's');
+      return true;
+    }
+
+    if (name === 'color') {
+      if (!/^#[0-9a-f]{6}$/i.test(rest)) { toast('usage: /color #ff0000'); return true; }
+      const { data, error } = await sb.from('profiles')
+        .update({ color: rest.toLowerCase() })
+        .eq('id', state.me.id)
+        .select()
+        .single();
+      if (error) { toast(error.message); return true; }
+      state.profile = data;
+      state.people.set(data.id, data);
+      renderMe();
+      renderMembers();
+      toast('Colour updated.');
+      return true;
+    }
+
+    if (name === 'clear') {
+      ui.messages.replaceChildren();
+      return true;
+    }
+
+    if (name === 'modcall') {
+      if (!room) { toast('Open a room first.'); return true; }
+      if (!rest) { await sendModcall(); return true; }
+      const { error } = await sb.rpc('send_modcall', { p_room: room.id, p_body: rest });
+      if (error) toast(error.message);
+      else toast('Modcall sent. A mod will see it.');
+      return true;
+    }
+
+    if (name === 'report') {
+      if (!room) { toast('Open a room first.'); return true; }
+      if (!rest) { toast('usage: /report username reason'); return true; }
+      const { error } = await sb.rpc('send_modcall', { p_room: room.id, p_body: 'report: ' + rest });
+      if (error) toast(error.message);
+      else toast('Report sent to the mods.');
+      return true;
+    }
+
+    if (name === 'resolve') {
+      if (!isStaff()) { toast('Staff only.'); return true; }
+      if (!rest) { toast('usage: /resolve modcall-id'); return true; }
+      await resolveModcall(rest);
       return true;
     }
 
@@ -2307,6 +3347,7 @@
     ui.adminAnnounce.value = '';
     renderAdminPanel();
     loadAdminUsers();
+    loadModCalls();
   }
 
   function closeAdminPanel() {
@@ -2334,6 +3375,7 @@
   function renderAdminPanel() {
     renderAdminUsers();
     renderAdminRooms();
+    renderModCalls();
     const inRoom = Boolean(state.current && state.current.type === 'room');
     ui.adminAnnounceBtn.disabled = !inRoom || !isAdmin();
     ui.adminAnnounce.disabled = !isAdmin();
