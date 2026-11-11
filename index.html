@@ -1,274 +1,335 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Epick Chat - free web chat</title>
-<meta name="description" content="Epick Chat is a free old-school chat system. Make an account, add friends, and talk in public or private rooms.">
+<meta name="description" content="Epick Chat is a free chat system. Make an account, add friends, and talk in public or private rooms.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" type="text/css" href="styles.css">
 </head>
 
-<body bgcolor="#FFFFFF" text="#000000" link="#0000CC" vlink="#660099" alink="#FF0000">
+<body>
 
 <a name="top"></a>
 
-<center>
-
 <!-- ================= HEADER ================= -->
-<table width="96%" border="0" cellpadding="0" cellspacing="0" class="masthead">
-  <tr>
-    <td bgcolor="#000066" align="center" height="58">
-      <font face="Arial, Helvetica" color="#FFFFFF" size="6"><b>EPICK CHAT</b></font><br>
-      <font face="Arial, Helvetica" color="#CCCCFF" size="1">A FREE CHAT SYSTEM FOR THE WORLD WIDE WEB</font>
-    </td>
-  </tr>
-</table>
+<header class="site-header">
+  <div class="brand-block">
+    <div class="brand">EPICK CHAT</div>
+    <div class="tagline">a free chat system for the world wide web</div>
+  </div>
+
+  <div class="header-right" id="header-user" hidden>
+    <div id="sidebar-me" class="header-me"></div>
+    <button type="button" id="edit-profile-btn" class="btn tiny">edit profile</button>
+    <button type="button" id="admin-btn" class="btn tiny" hidden>admin</button>
+    <button type="button" id="logout-btn" class="linkbtn">log out</button>
+  </div>
+</header>
 
 <!-- ================= LOGIN SCREEN ================= -->
-<div id="auth-overlay">
-  <br>
-  <table width="430" border="1" cellpadding="8" cellspacing="0" bordercolor="#999999" bgcolor="#F7F7F7">
-    <tr>
-      <td bgcolor="#000066">
-        <font face="Arial, Helvetica" color="#FFFFFF" size="2"><b>MEMBER LOGIN</b></font>
-      </td>
-    </tr>
-    <tr>
-      <td>
+<div id="auth-overlay" class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-head">
+      <span>MEMBER LOGIN</span>
+    </div>
 
-        <div id="setup-panel" hidden>
-          <font face="Arial" size="2">
-          <b>SETUP REQUIRED</b>
-          <p>This chat needs a free Supabase database before it can run. It takes about 5 minutes:</p>
-          <ol>
-            <li>Create a project at <a href="https://supabase.com" target="_blank">supabase.com</a>.</li>
-            <li>Open <b>SQL Editor</b> and run <tt>supabase/schema.sql</tt>.</li>
-            <li>Go to <b>Project Settings &gt; API</b> and copy the Project URL and the <tt>anon</tt> public key.</li>
-            <li>Paste them into <tt>js/config.js</tt> locally, or set <tt>SUPABASE_URL</tt> and <tt>SUPABASE_ANON_KEY</tt> in Render.</li>
-            <li>Reload this page.</li>
-          </ol>
-          <p>The full walkthrough is in <tt>README.md</tt>. Messages are stored in Postgres, so they survive redeploys.</p>
-          <p><button type="button" onclick="location.reload()">I configured it - reload</button></p>
-          </font>
+    <div class="auth-body">
+
+      <div id="setup-panel" hidden>
+        <b>SETUP REQUIRED</b>
+        <p>This chat needs a free Supabase database before it can run. It takes about 5 minutes:</p>
+        <ol>
+          <li>Create a project at <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a>.</li>
+          <li>Open <b>SQL Editor</b> and run <tt>supabase/schema.sql</tt>.</li>
+          <li>Go to <b>Project Settings &gt; API</b> and copy the Project URL and the <tt>anon</tt> public key.</li>
+          <li>Paste them into <tt>js/config.js</tt> locally, or set <tt>SUPABASE_URL</tt> and <tt>SUPABASE_ANON_KEY</tt> in Render.</li>
+          <li>Reload this page.</li>
+        </ol>
+        <p>The full walkthrough is in <tt>README.md</tt>. Messages are stored in Postgres, so they survive redeploys.</p>
+        <p><button type="button" class="btn" onclick="location.reload()">I configured it - reload</button></p>
+      </div>
+
+      <div id="auth-main">
+        <div id="auth-tabs" class="auth-tabs">
+          <button type="button" class="auth-tab active" data-tab="login">Sign in</button>
+          <span class="tab-sep">|</span>
+          <button type="button" class="auth-tab" data-tab="register">Register</button>
         </div>
 
-        <div id="auth-main">
-          <div id="auth-tabs">
-            <button type="button" class="auth-tab active" data-tab="login">Sign in</button>
-            <font size="2"> | </font>
-            <button type="button" class="auth-tab" data-tab="register">Register</button>
+        <hr>
+
+        <form id="login-form" action="#" method="post">
+          <div class="field-row">
+            <label for="login-email">Email</label>
+            <input id="login-email" type="email" name="email" required autocomplete="email">
+          </div>
+          <div class="field-row">
+            <label for="login-password">Password</label>
+            <input id="login-password" type="password" name="password" required autocomplete="current-password">
+          </div>
+          <p class="form-actions"><button type="submit" class="btn primary">Enter chat</button></p>
+        </form>
+
+        <form id="register-form" action="#" method="post" hidden>
+          <div class="field-row">
+            <label for="register-username">Username</label>
+            <input id="register-username" type="text" name="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+" autocomplete="username">
+          </div>
+          <div class="hint">3-20 letters, numbers, underscores</div>
+
+          <div class="field-row">
+            <label for="register-display">Display name</label>
+            <input id="register-display" type="text" name="display" maxlength="30" autocomplete="nickname" placeholder="optional">
           </div>
 
-          <hr size="1" color="#999999">
+          <div class="field-row">
+            <label for="register-email">Email</label>
+            <input id="register-email" type="email" name="email" required autocomplete="email">
+          </div>
 
-          <form id="login-form" action="#" method="post">
-            <table border="0" cellpadding="3" cellspacing="0">
-              <tr>
-                <td align="right"><font face="Arial" size="2">Email:</font></td>
-                <td><input id="login-email" type="email" name="email" size="28" required autocomplete="email"></td>
-              </tr>
-              <tr>
-                <td align="right"><font face="Arial" size="2">Password:</font></td>
-                <td><input id="login-password" type="password" name="password" size="28" required autocomplete="current-password"></td>
-              </tr>
-            </table>
-            <p><button type="submit">Enter chat</button></p>
-          </form>
+          <div class="field-row">
+            <label for="register-password">Password</label>
+            <input id="register-password" type="password" name="password" required minlength="6" autocomplete="new-password">
+          </div>
+          <div class="hint">at least 6 characters</div>
 
-          <form id="register-form" action="#" method="post" hidden>
-            <table border="0" cellpadding="3" cellspacing="0">
-              <tr>
-                <td align="right"><font face="Arial" size="2">Username:</font></td>
-                <td>
-                  <input id="register-username" type="text" name="username" size="24" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+" autocomplete="username">
-                  <br><font face="Arial" size="1" color="#666666">3-20 letters, numbers, underscores</font>
-                </td>
-              </tr>
-              <tr>
-                <td align="right"><font face="Arial" size="2">Display name:</font></td>
-                <td><input id="register-display" type="text" name="display" size="24" maxlength="30" autocomplete="nickname"> <font face="Arial" size="1" color="#666666">(optional)</font></td>
-              </tr>
-              <tr>
-                <td align="right"><font face="Arial" size="2">Email:</font></td>
-                <td><input id="register-email" type="email" name="email" size="28" required autocomplete="email"></td>
-              </tr>
-              <tr>
-                <td align="right"><font face="Arial" size="2">Password:</font></td>
-                <td>
-                  <input id="register-password" type="password" name="password" size="24" required minlength="6" autocomplete="new-password">
-                  <br><font face="Arial" size="1" color="#666666">at least 6 characters</font>
-                </td>
-              </tr>
-            </table>
-            <p><button type="submit">Create account</button></p>
-          </form>
+          <p class="form-actions"><button type="submit" class="btn primary">Create account</button></p>
+        </form>
 
-          <div id="auth-error" class="auth-error" hidden></div>
+        <div id="auth-error" class="auth-error" hidden></div>
 
-          <font face="Arial" size="1" color="#555555">
-            New here? Click <b>Register</b>. It is free. We will not send you banner ads.
-          </font>
+        <div class="hint auth-foot">
+          Free accounts. No banner ads, no email spam. Pick a name and start talking.
         </div>
+      </div>
 
-      </td>
-    </tr>
-  </table>
-
+    </div>
+  </div>
 </div>
 
 <!-- ================= CHAT SCREEN ================= -->
-<div id="app-window" hidden>
-
-  <table width="96%" border="0" cellpadding="2" cellspacing="0" bgcolor="#EEEEEE">
-    <tr>
-      <td align="center">
-        <font face="Arial, Helvetica" size="1">
-          <a href="#top">home</a> |
-          <a href="#chat">chat</a> |
-          <a href="#rooms">rooms</a> |
-          <a href="#friends">friends</a> |
-          <a href="#help">help</a>
-        </font>
-      </td>
-    </tr>
-  </table>
-
-  <marquee behavior="scroll" direction="left" scrollamount="2" width="96%" class="ticker">
-    <font face="Arial, Helvetica" size="1">
-      *** WELCOME TO EPICK CHAT *** be nice *** no spam *** private rooms are invite-only *** tell your friends ***
-    </font>
-  </marquee>
+<main id="app-window" hidden>
 
   <div class="mobile-bar">
     <button type="button" id="sidebar-toggle" class="linkbtn">[ rooms &amp; friends ]</button>
   </div>
 
-  <table width="96%" border="0" cellpadding="0" cellspacing="0" id="app-body">
-    <tr>
+  <div class="app-grid" id="app-body">
 
-      <!-- ============ LEFT COLUMN ============ -->
-      <td width="21%" valign="top" class="sidebar-cell">
-        <div id="sidebar">
+    <!-- ============ LEFT COLUMN ============ -->
+    <aside class="panel sidebar" id="sidebar">
 
-          <table width="100%" border="0" cellpadding="3" cellspacing="0" bgcolor="#EEEEEE">
-            <tr><td>
-              <div id="sidebar-me"></div>
-              <font face="Arial" size="1">
-                <button type="button" id="logout-btn" class="linkbtn">log out</button>
-              </font>
-            </td></tr>
-          </table>
+      <div class="rail-title">MY ROOMS</div>
+      <div id="my-rooms" class="side-list"></div>
+      <div class="side-actions">
+        <button type="button" id="new-room-btn" class="linkbtn">+ new room</button>
+        <button type="button" id="join-room-btn" class="linkbtn">join by invite code</button>
+      </div>
 
-          <br>
+      <hr>
 
-          <font face="Arial, Helvetica" size="2"><b>MY ROOMS</b></font>
-          <div id="my-rooms" class="side-list"></div>
-          <font face="Arial" size="1">
-            <button type="button" id="new-room-btn" class="linkbtn">+ new room</button><br>
-            <button type="button" id="join-room-btn" class="linkbtn">join by invite code</button>
-          </font>
+      <div class="rail-title">PUBLIC ROOMS</div>
+      <div id="public-rooms" class="side-list"></div>
 
-          <hr size="1" color="#999999">
+      <hr>
 
-          <font face="Arial, Helvetica" size="2"><b>PUBLIC ROOMS</b></font>
-          <div id="public-rooms" class="side-list"></div>
+      <div class="rail-title">FRIENDS <span id="friend-count" class="title-count"></span></div>
+      <div id="friend-requests"></div>
+      <div id="friends" class="side-list"></div>
 
-          <hr size="1" color="#999999">
-
-          <font face="Arial, Helvetica" size="2"><b>FRIENDS</b> <span id="friend-count" class="title-count"></span></font>
-          <div id="friend-requests"></div>
-          <div id="friends" class="side-list"></div>
-
-          <form id="add-friend-form" action="#" method="post" autocomplete="off">
-            <font face="Arial" size="1">find a user:</font><br>
-            <input id="friend-search" type="text" size="10" maxlength="20" style="width:78%">
-            <button type="submit">find</button>
-          </form>
-          <div id="friend-results" class="side-list"></div>
-
+      <form id="add-friend-form" action="#" method="post" autocomplete="off" class="find-form">
+        <label for="friend-search">find a user</label>
+        <div class="find-row">
+          <input id="friend-search" type="text" maxlength="20">
+          <button type="submit" class="btn tiny">find</button>
         </div>
-      </td>
+      </form>
+      <div id="friend-results" class="side-list"></div>
 
-      <td width="1%" bgcolor="#999999" class="spacer-cell"></td>
+    </aside>
 
-      <!-- ============ CHAT COLUMN ============ -->
-      <td width="56%" valign="top" class="chat-cell">
-        <a name="chat"></a>
+    <!-- ============ CHAT COLUMN ============ -->
+    <section class="panel chat">
+      <a name="chat"></a>
 
-        <div id="channel-header">
-          <font face="Arial, Helvetica" size="4"><b id="channel-name">-</b></font><br>
-          <font face="Arial" size="1" color="#666666" id="channel-topic">select a room or a friend to start chatting</font>
-          <div id="channel-actions"></div>
+      <div id="channel-header">
+        <div id="channel-name">-</div>
+        <div id="channel-topic">select a room or a friend to start chatting</div>
+        <div id="channel-actions"></div>
+      </div>
+
+      <div id="messages" class="messages"></div>
+
+      <form id="composer" action="#" method="post" autocomplete="off">
+        <div id="reply-bar" class="reply-bar" hidden>
+          <span id="reply-text" class="reply-text"></span>
+          <button type="button" id="reply-cancel" class="linkbtn">cancel</button>
         </div>
+        <div class="composer-row">
+          <button type="button" id="image-btn" class="btn" title="Send an image">image</button>
+          <input id="message-input" type="text" maxlength="2000" placeholder="type a message, /help for commands">
+          <button type="submit" class="btn primary">Send</button>
+        </div>
+        <input id="image-file" type="file" accept="image/*" hidden>
+      </form>
+    </section>
 
-        <div id="messages" class="messages"></div>
+    <!-- ============ RIGHT COLUMN ============ -->
+    <aside class="panel rightbar">
+      <div class="rail-title">MY PROFILE</div>
+      <div id="my-card" class="my-card"></div>
 
-        <form id="composer" action="#" method="post" autocomplete="off">
-          <table width="100%" border="0" cellpadding="2" cellspacing="0">
-            <tr>
-              <td><input id="message-input" type="text" maxlength="2000" style="width:97%" placeholder="type a message and press Enter"></td>
-              <td width="1%"><button type="submit">Send</button></td>
-            </tr>
-          </table>
-        </form>
-      </td>
+      <hr>
 
-      <td width="1%" bgcolor="#999999" class="spacer-cell"></td>
+      <div class="rail-title" id="userlist-title">PEOPLE</div>
+      <div id="member-list" class="member-list"></div>
+    </aside>
 
-      <!-- ============ RIGHT COLUMN ============ -->
-      <td width="21%" valign="top" class="users-cell">
-        <a name="rooms"></a>
-        <font face="Arial, Helvetica" size="2"><b id="userlist-title">PEOPLE</b></font>
-        <div id="member-list" class="member-list"></div>
-        <hr size="1" color="#999999">
-        <font face="Arial" size="1" color="#555555">
-          <b>HOUSE RULES</b><br>
-          1. no spam<br>
-          2. no flooding<br>
-          3. be excellent to each other<br>
-          <br>
-          <b>NEED HELP?</b><br>
-          Ask in <b>#lobby</b>.
-        </font>
-      </td>
+  </div>
 
-    </tr>
-  </table>
+  <div class="statusbar">
+    <div class="status-left">
+      <span class="status-dot offline" id="status-dot"></span>
+      <span id="status-connection">offline</span>
+      <span class="status-sep">|</span>
+      <span id="status-user">guest</span>
+      <span class="status-sep">|</span>
+      <span id="status-online">0 online</span>
+    </div>
+    <div class="status-right">
+      <span id="status-clock">--:--:--</span>
+    </div>
+  </div>
 
-  <table width="96%" border="0" cellpadding="2" cellspacing="0" class="statusbar">
-    <tr>
-      <td>
-        <font face="Arial" size="1" color="#333333">
-          <span class="status-dot offline" id="status-dot"></span>
-          <span id="status-connection">offline</span> |
-          <span id="status-user">guest</span> |
-          <span id="status-online">0 online</span>
-        </font>
-      </td>
-      <td align="right">
-        <font face="Arial" size="1" color="#555555">
-          <span id="status-clock">--:--:--</span>
-        </font>
-      </td>
-    </tr>
-  </table>
-
-</div>
-
-<br>
+</main>
 
 <!-- ================= FOOTER ================= -->
-<a name="help"></a>
-<hr size="1" width="96%" color="#999999">
-<font face="Arial, Helvetica" size="1" color="#555555">
+<footer class="site-footer">
   Created by Epick
-</font>
+</footer>
 
-</center>
+<!-- ================= PROFILE EDITOR ================= -->
+<div id="profile-modal" class="modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head">
+      <span>EDIT PROFILE</span>
+      <button type="button" id="profile-close" class="linkbtn">close</button>
+    </div>
+
+    <div class="modal-body">
+
+      <div class="banner-preview" id="profile-banner-preview"></div>
+
+      <div class="editor-top">
+        <div id="profile-avatar-preview" class="avatar-preview"></div>
+        <div class="editor-top-fields">
+          <div class="field-row">
+            <label for="profile-display">Display name</label>
+            <input id="profile-display" type="text" maxlength="30">
+          </div>
+          <div class="hint">Shown under your username. Leave blank to use your username.</div>
+        </div>
+      </div>
+
+      <div class="field-block">
+        <label for="profile-bio">Bio</label>
+        <textarea id="profile-bio" maxlength="280" rows="3" placeholder="tell people who you are"></textarea>
+        <div class="hint right"><span id="profile-bio-count">0</span> / 280</div>
+      </div>
+
+      <div class="field-block">
+        <label>Avatar colour</label>
+        <div class="swatches" id="profile-colors"></div>
+        <div class="hint">Used when you have no profile photo.</div>
+      </div>
+
+      <div class="field-block">
+        <label for="profile-avatar-file">Profile photo</label>
+        <input id="profile-avatar-file" type="file" accept="image/*">
+        <div class="hint">Square works best. Max 5 MB.</div>
+      </div>
+
+      <div class="field-block">
+        <label>Banner</label>
+        <div class="banner-grid" id="profile-banners"></div>
+        <div class="hint">Presets are 2300 x 1080. You can also upload your own.</div>
+        <input id="profile-banner-file" type="file" accept="image/*">
+      </div>
+
+    </div>
+
+    <div class="modal-foot">
+      <button type="button" id="profile-save" class="btn primary">save profile</button>
+      <button type="button" id="profile-cancel" class="btn">cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ADMIN PANEL ================= -->
+<div id="admin-modal" class="modal" hidden>
+  <div class="modal-box wide">
+    <div class="modal-head">
+      <span>ADMIN PANEL</span>
+      <button type="button" id="admin-close" class="linkbtn">close</button>
+    </div>
+
+    <div class="modal-body">
+
+      <div class="admin-section">
+        <div class="admin-title">RANKS</div>
+        <div class="hint">Owner and co-owners can change ranks. You cannot change your own.</div>
+        <div id="admin-users" class="admin-list"></div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">ANNOUNCE</div>
+        <div class="admin-row">
+          <input id="admin-announce" type="text" maxlength="500" placeholder="message to post as a system notice">
+          <button type="button" id="admin-announce-btn" class="btn primary">send</button>
+        </div>
+        <div class="hint">Posts to the room you are currently viewing.</div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">ROOMS</div>
+        <div id="admin-rooms" class="admin-list"></div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">FUN</div>
+        <div class="admin-buttons">
+          <button type="button" class="btn" data-fun="8ball">8-ball</button>
+          <button type="button" class="btn" data-fun="coinflip">coin flip</button>
+          <button type="button" class="btn" data-fun="roll">roll d20</button>
+          <button type="button" class="btn" data-fun="tableflip">table flip</button>
+          <button type="button" class="btn" data-fun="unflip">unflip</button>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">COMMANDS</div>
+        <div class="admin-cmds">
+          <div><tt>/purge 10</tt> delete the last 10 messages in this room</div>
+          <div><tt>/topic new topic</tt> change the room topic</div>
+          <div><tt>/announce text</tt> post a system notice</div>
+          <div><tt>/me action</tt> &middot; <tt>/shrug</tt> &middot; <tt>/roll 2d6</tt> &middot; <tt>/8ball</tt> &middot; <tt>/coinflip</tt></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-foot">
+      <button type="button" id="admin-done" class="btn">done</button>
+    </div>
+  </div>
+</div>
 
 <div id="toast" class="toast" hidden></div>
 
 <script type="text/javascript" src="js/config.js"></script>
+<script type="text/javascript" src="js/banners.js"></script>
 <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script type="text/javascript" src="js/app.js"></script>
 

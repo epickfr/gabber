@@ -1,19 +1,51 @@
 # Epick Chat
 
-An intentionally old-looking chat site: HTML 4.01, table layout, underlined blue links, monospace chat lines, and a marquee. Under the crust it is plain HTML/CSS/JS with Supabase for accounts, storage, and realtime.
+An intentionally old-looking chat site: beveled panels, navy title bars, Verdana and Courier text, and underlined blue links. Under the crust it is plain HTML/CSS/JS with Supabase for accounts, storage, and realtime.
 
 The old look is a style choice, not a claim about the code's age.
 
 ## What it does
 
 - Email/password accounts with a unique username
+- Custom profiles: display name, bio, avatar colour, avatar image, and banner
 - Friends: search users, send requests, accept/decline, remove friends
 - Direct messages between friends
 - Public rooms anyone can join
 - Private rooms with an invite code
-- Live messages and online dots via Supabase Realtime
+- Live messages, replies, and online dots via Supabase Realtime
+- Message deletion (your own messages; staff can delete anyone's in rooms)
+- Ranks shown next to names: `(owner)`, `(co-owner)`, `(admin)`, `(mod)`
+- Admin panel for staff: change ranks, announce, delete rooms, fun buttons
+- Chat commands such as `/me`, `/roll`, `/purge`, `/topic`, `/announce`
+- Chat image embeds show a content warning and a **view anyway** button first
 - Chat history stored in Postgres, so Render redeploys do not wipe it
 - Row Level Security: users can only read rooms/DMs they belong to
+
+## Ranks
+
+Ranks live on `public.profiles.rank` and are shown next to usernames.
+
+| Rank | Colour | Can do |
+| --- | --- | --- |
+| `owner` | red | everything, including granting any rank |
+| `co-owner` | purple | change ranks (except owner/co-owner), all admin actions |
+| `admin` | blue | announce, delete rooms, delete any room message |
+| `mod` | green | delete any room message, `/purge`, `/topic` |
+| `member` | (none) | normal chat, delete own messages |
+
+The first person to press **claim ownership** (shown on the profile card when no owner exists) becomes the owner. After that, the owner and co-owners can change ranks in the admin panel.
+
+## Chat commands
+
+| Command | Who | What it does |
+| --- | --- | --- |
+| `/me waves` | everyone | emote line |
+| `/shrug`, `/tableflip`, `/unflip` | everyone | fun text |
+| `/roll 2d6`, `/coinflip`, `/8ball question` | everyone | dice, coin, magic 8-ball |
+| `/help` | everyone | list commands |
+| `/topic new topic` | staff or room owner | change the room topic |
+| `/purge 10` | staff | delete the last N messages in the room |
+| `/announce text` | admins | post a system announcement |
 
 ## Is it private?
 
@@ -28,6 +60,8 @@ The code is set up so that user data is private even though the site is publicly
 - Private rooms are invisible to non-members and require an invite code to join.
 - A user can only post as themselves, and only in rooms they joined.
 - Friend requests must be accepted through a server-side function; a user cannot forge an accepted friendship.
+- Image uploads go to the public `epick` bucket, but a user can only write inside their own `avatars/<uid>/`, `banners/<uid>/`, and `chat/<uid>/` folders.
+- Rank changes, announcements, room deletion, and purges run through server-side functions that check the caller's rank.
 - The `service_role` key is never used in the frontend.
 
 ### About the Supabase key
@@ -46,11 +80,13 @@ If you want the whole site locked down (no public signups), turn off new signups
 
 ```
 EpickChat/
-  index.html              the whole UI (login + chat)
-  styles.css              small, deliberately barebones stylesheet
+  index.html              the whole UI (login + chat + modals)
+  styles.css              retro stylesheet
+  banners/                preset banner images (2300x1080)
   js/config.example.js    copy to js/config.js for local development
   js/config.js            generated / gitignored (your local values)
-  js/app.js               auth, rooms, friends, DMs, realtime
+  js/app.js               auth, rooms, friends, DMs, profiles, ranks, realtime
+  js/banners.js           banner preset manifest
   build-config.js         writes js/config.js from env vars on Render
   supabase/schema.sql     run this once in Supabase
   render.yaml             Render static-site blueprint
@@ -63,7 +99,8 @@ EpickChat/
 
 1. Make a free account at <https://supabase.com> and create a new project.
 2. Open **SQL Editor**, paste the entire contents of `supabase/schema.sql`, and click **Run**.
-   - This creates the tables, policies, realtime setup, the `#lobby` room, and a trigger that gives every new user a profile.
+   - This creates the tables, policies, storage bucket, ranks, admin functions, realtime setup, the `#lobby` room, and a trigger that gives every new user a profile.
+   - `schema.sql` is safe to re-run on an existing project: it adds the newer columns and policies without deleting your data.
 3. Open **Project Settings -> API** and copy:
    - **Project URL**
    - **anon public** key (not the service_role key)
@@ -127,12 +164,23 @@ Manual route instead of the Blueprint: **New + -> Static Site**, connect the rep
 
 - Supabase free projects pause after a period of inactivity. They resume when opened; data is not lost.
 - Realtime is enabled by `schema.sql`. If messages only appear after a refresh, check **Database -> Replication** and make sure the `messages`, `dm_messages`, `friendships`, `rooms`, `room_members`, and `profiles` tables are in the `supabase_realtime` publication.
-- The old look is on purpose. The HTML 4.01 doctype, `<center>`, `<font>`, tables, marquee, and tiny underlined links are all part of it.
+- **Upgrading an existing install:** re-run the whole `supabase/schema.sql` in the SQL Editor. It adds `bio`, `avatar_url`, `banner_url`, `rank`, `reply_to`, `reply_snippet`, the `epick` storage bucket and its policies, and the admin RPCs. Without it, profiles, images, ranks, replies, and admin actions will fail with a "column/schema cache" error.
+- If image uploads fail, confirm the `epick` bucket exists and is public, then re-run the storage section of `schema.sql`.
+- The old look is on purpose: beveled panels, navy title bars, Verdana/Courier type, and tiny underlined links.
 
 ## Troubleshooting
 
 **"SETUP REQUIRED" will not go away**
-`js/config.js` is missing or still has the placeholder URL/key, or the file was cached. Hard-refresh.
+`js/config.js` is missing or still has the placeholder URL/key, or the file was cached. On Render, changing environment variables requires **Manual Deploy -> Clear build cache & deploy**. Then hard-refresh.
+
+**Profile save says columns are missing**
+Re-run `supabase/schema.sql`; the newer `profiles` columns have not been added to that project yet.
+
+**Image upload says storage is not ready**
+Re-run the storage section of `supabase/schema.sql` so the public `epick` bucket and its folder policies exist.
+
+**Rank options do nothing**
+Only the owner and co-owners can change ranks, and you cannot change your own. If nobody is owner yet, press **claim ownership** on your profile card.
 
 **"Database error saving new user"**
 The username is probably taken. Re-run the latest `schema.sql` so the `username_available` function exists, then try a different username.

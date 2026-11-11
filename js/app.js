@@ -54,6 +54,75 @@
 
   const initial = (name) => (name || '?').slice(0, 1).toUpperCase();
 
+  const IMAGE_URL_RE = /(https?:\/\/[^\s<>"']+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\?[^\s<>"']*)?)/i;
+
+  const AVATAR_COLORS = ['#0a7d32', '#7a2fbf', '#b8860b', '#c0392b', '#1f6feb', '#a0522d', '#008b8b', '#d2691e'];
+
+  function avatarNode(person, extraClass) {
+    const cls = 'avatar' + (extraClass ? ' ' + extraClass : '');
+    const color = (person && person.color) || '#555555';
+    const name = (person && person.username) || '?';
+
+    if (person && person.avatar_url) {
+      const img = h('img', {
+        class: cls + ' avatar-img',
+        src: person.avatar_url,
+        alt: '',
+        loading: 'lazy',
+        referrerpolicy: 'no-referrer'
+      });
+      img.addEventListener('error', () => {
+        img.replaceWith(h('span', { class: cls, style: 'background-color:' + color }, initial(name)));
+      });
+      return img;
+    }
+
+    return h('span', { class: cls, style: 'background-color:' + color }, initial(name));
+  }
+
+  function bannerStyle(url) {
+    if (!url) return '';
+    const safe = String(url).replace(/["'\\()\s]/g, '');
+    return 'background-image:url("' + safe + '")';
+  }
+
+  function imageGate(url) {
+    const box = h('div', { class: 'embed-gate' },
+      h('div', { class: 'embed-warn', text: 'This image may contain sensitive or offensive content.' }),
+      h('div', { class: 'embed-actions' },
+        h('button', {
+          type: 'button',
+          class: 'btn tiny',
+          text: 'view anyway',
+          onclick: () => reveal()
+        }),
+        h('a', {
+          class: 'btn tiny',
+          href: url,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          text: 'open in new tab'
+        })
+      )
+    );
+
+    function reveal() {
+      const img = h('img', {
+        class: 'embed-img',
+        src: url,
+        alt: 'embedded image',
+        loading: 'lazy',
+        referrerpolicy: 'no-referrer'
+      });
+      img.addEventListener('error', () => {
+        img.replaceWith(h('div', { class: 'embed-broken', text: 'That image could not be loaded.' }));
+      });
+      box.replaceWith(h('div', { class: 'embed' }, img));
+    }
+
+    return box;
+  }
+
   function debounce(fn, ms) {
     let timer = null;
     return (...args) => {
@@ -94,7 +163,13 @@
       presenceChannel: null,
       searchResults: null,
       booting: false,
-      toastTimer: null
+      toastTimer: null,
+      editor: null,
+      viewingProfile: null,
+      uploading: false,
+      replyTo: null,
+      hasOwner: false,
+      adminUsers: []
     };
   }
   let state = freshState();
@@ -143,6 +218,35 @@
     statusOnline: $id('status-online'),
     statusClock: $id('status-clock'),
     logoutBtn: $id('logout-btn'),
+    headerUser: $id('header-user'),
+    editProfileBtn: $id('edit-profile-btn'),
+    myCard: $id('my-card'),
+    imageBtn: $id('image-btn'),
+    imageFile: $id('image-file'),
+    profileModal: $id('profile-modal'),
+    profileClose: $id('profile-close'),
+    profileCancel: $id('profile-cancel'),
+    profileSave: $id('profile-save'),
+    profileDisplay: $id('profile-display'),
+    profileBio: $id('profile-bio'),
+    profileBioCount: $id('profile-bio-count'),
+    profileColors: $id('profile-colors'),
+    profileBanners: $id('profile-banners'),
+    profileAvatarFile: $id('profile-avatar-file'),
+    profileBannerFile: $id('profile-banner-file'),
+    profileAvatarPreview: $id('profile-avatar-preview'),
+    profileBannerPreview: $id('profile-banner-preview'),
+    replyBar: $id('reply-bar'),
+    replyText: $id('reply-text'),
+    replyCancel: $id('reply-cancel'),
+    adminBtn: $id('admin-btn'),
+    adminModal: $id('admin-modal'),
+    adminClose: $id('admin-close'),
+    adminDone: $id('admin-done'),
+    adminUsers: $id('admin-users'),
+    adminRooms: $id('admin-rooms'),
+    adminAnnounce: $id('admin-announce'),
+    adminAnnounceBtn: $id('admin-announce-btn'),
     toast: $id('toast')
   };
 
@@ -208,6 +312,7 @@
   function showAuth() {
     ui.auth.hidden = false;
     ui.app.hidden = true;
+    ui.headerUser.hidden = true;
     setAuthError('');
   }
 
@@ -219,12 +324,14 @@
 
     try {
       await ensureProfile();
+      await checkOwner();
       await loadFriends();
       await loadRooms();
       await loadThreads();
 
       ui.auth.hidden = true;
       ui.app.hidden = false;
+      ui.headerUser.hidden = false;
       renderAll();
 
       startPresence();
@@ -253,6 +360,11 @@
     state = freshState();
     ui.app.hidden = true;
     ui.auth.hidden = false;
+    ui.headerUser.hidden = true;
+    ui.adminBtn.hidden = true;
+    ui.profileModal.hidden = true;
+    ui.adminModal.hidden = true;
+    ui.replyBar.hidden = true;
     ui.messages.replaceChildren();
     ui.memberList.replaceChildren();
     ui.friends.replaceChildren();
@@ -260,7 +372,9 @@
     ui.publicRooms.replaceChildren();
     ui.friendRequests.replaceChildren();
     ui.friendResults.replaceChildren();
-    ui.channelName.textContent = '—';
+    ui.sidebarMe.replaceChildren();
+    ui.myCard.replaceChildren();
+    ui.channelName.textContent = '-';
     ui.channelTopic.textContent = 'select a room or a friend to start chatting';
     ui.channelActions.replaceChildren();
     setConnection('offline');
@@ -385,7 +499,23 @@
       }
 
       if (!data.session) {
-        setAuthError('Account created! Check your email to confirm it, then sign in.', 'ok');
+        // Email confirmation may still be switched on in the Supabase project.
+        // Try to sign in immediately so a new account can start chatting.
+        const { data: signed, error: signInError } = await sb.auth.signInWithPassword({
+          email,
+          password
+        });
+
+        if (!signInError && signed.session) {
+          startApp(signed.session);
+          return;
+        }
+
+        setAuthError(
+          'Account created, but this project still requires email confirmation. ' +
+          'Turn it off in Supabase: Authentication -> Providers -> Email -> Confirm email.',
+          'ok'
+        );
         ui.registerForm.reset();
       } else {
         startApp(data.session);
@@ -397,6 +527,112 @@
   function bindApp() {
     ui.logoutBtn.addEventListener('click', async () => {
       await sb.auth.signOut();
+    });
+
+    ui.editProfileBtn.addEventListener('click', openProfileEditor);
+    ui.myCard.addEventListener('click', (event) => {
+      if (event.target.closest('[data-action="edit-profile"]')) openProfileEditor();
+      if (event.target.closest('[data-action="claim-owner"]')) claimOwner();
+    });
+
+    ui.profileClose.addEventListener('click', closeProfileEditor);
+    ui.profileCancel.addEventListener('click', closeProfileEditor);
+    ui.profileSave.addEventListener('click', saveProfile);
+    ui.profileModal.addEventListener('click', (event) => {
+      if (event.target === ui.profileModal) closeProfileEditor();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      if (!ui.profileModal.hidden) closeProfileEditor();
+      if (!ui.adminModal.hidden) closeAdminPanel();
+    });
+    ui.profileBio.addEventListener('input', () => {
+      ui.profileBioCount.textContent = String(ui.profileBio.value.length);
+    });
+    ui.profileColors.addEventListener('click', (event) => {
+      const swatch = event.target.closest('[data-color]');
+      if (!swatch || !state.editor) return;
+      state.editor.color = swatch.dataset.color;
+      renderEditorPreviews();
+    });
+    ui.profileBanners.addEventListener('click', (event) => {
+      const tile = event.target.closest('[data-banner]');
+      if (!tile || !state.editor) return;
+      state.editor.banner_url = tile.dataset.banner || '';
+      renderEditorPreviews();
+    });
+    ui.profileAvatarFile.addEventListener('change', async () => {
+      const file = ui.profileAvatarFile.files && ui.profileAvatarFile.files[0];
+      ui.profileAvatarFile.value = '';
+      if (!file || !state.editor) return;
+      const url = await uploadImage(file, 'avatars');
+      if (!url) return;
+      state.editor.avatar_url = url;
+      renderEditorPreviews();
+      toast('Photo uploaded. Press save profile.');
+    });
+    ui.profileBannerFile.addEventListener('change', async () => {
+      const file = ui.profileBannerFile.files && ui.profileBannerFile.files[0];
+      ui.profileBannerFile.value = '';
+      if (!file || !state.editor) return;
+      const url = await uploadImage(file, 'banners');
+      if (!url) return;
+      state.editor.banner_url = url;
+      renderEditorPreviews();
+      toast('Banner uploaded. Press save profile.');
+    });
+
+    ui.imageBtn.addEventListener('click', () => ui.imageFile.click());
+    ui.imageFile.addEventListener('change', async () => {
+      const file = ui.imageFile.files && ui.imageFile.files[0];
+      ui.imageFile.value = '';
+      if (file) await sendImageFile(file);
+    });
+
+    ui.memberList.addEventListener('click', (event) => {
+      if (event.target.closest('[data-action="close-profile"]')) {
+        state.viewingProfile = null;
+        renderMembers();
+        return;
+      }
+      const member = event.target.closest('[data-member-id]');
+      if (member) {
+        state.viewingProfile = member.dataset.memberId;
+        renderMembers();
+      }
+    });
+
+    ui.replyCancel.addEventListener('click', cancelReply);
+
+    ui.messages.addEventListener('click', (event) => {
+      const del = event.target.closest('[data-delete]');
+      if (del) {
+        deleteMessage(del.dataset.delete);
+        return;
+      }
+      const rep = event.target.closest('[data-reply]');
+      if (rep) startReply(rep.dataset.reply);
+    });
+
+    ui.adminBtn.addEventListener('click', openAdminPanel);
+    ui.adminClose.addEventListener('click', closeAdminPanel);
+    ui.adminDone.addEventListener('click', closeAdminPanel);
+    ui.adminModal.addEventListener('click', (event) => {
+      if (event.target === ui.adminModal) {
+        closeAdminPanel();
+        return;
+      }
+      const fun = event.target.closest('[data-fun]');
+      if (fun) runFunCommand(fun.dataset.fun);
+    });
+    ui.adminAnnounceBtn.addEventListener('click', sendAnnouncement);
+    ui.adminUsers.addEventListener('change', (event) => {
+      const select = event.target.closest('[data-rank-user]');
+      if (select) changeRank(select.dataset.rankUser, select.value);
+    });
+    ui.adminRooms.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-admin-room]');
+      if (button) adminDeleteRoom(button.dataset.adminRoom);
     });
 
     ui.composer.addEventListener('submit', sendMessage);
@@ -581,20 +817,82 @@
     renderStatus();
   }
 
+  function profileCardNode(person, online, options) {
+    const opts = options || {};
+    const card = h('div', { class: 'profile-card' },
+      h('div', { class: 'profile-banner', style: bannerStyle(person.banner_url) }),
+      h('div', { class: 'profile-head' },
+        avatarNode(person, 'big'),
+        h('div', { class: 'profile-head-text' },
+          h('div', { class: 'profile-name' }, person.username, rankBadge(person)),
+          h('div', { class: 'profile-sub', text: person.display_name || '' }),
+          h('div', {
+            class: 'presence ' + (online ? 'on' : 'off'),
+            text: online ? '* online *' : 'offline'
+          })
+        )
+      ),
+      h('div', { class: 'profile-bio', text: person.bio || 'no bio yet.' })
+    );
+
+    if (opts.edit) {
+      card.append(h('button', {
+        type: 'button',
+        class: 'btn tiny wide',
+        'data-action': 'edit-profile',
+        text: 'edit profile'
+      }));
+    }
+
+    return card;
+  }
+
   function renderMe() {
     if (!state.profile) {
       ui.sidebarMe.replaceChildren();
+      ui.myCard.replaceChildren();
       return;
     }
+
     const person = state.profile;
+
     ui.sidebarMe.replaceChildren(
-      h('span', { class: 'avatar', style: 'background-color:' + person.color }, initial(person.username)),
+      avatarNode(person, 'small'),
       h('span', { class: 'me-text' },
-        h('strong', { text: person.username }),
+        h('strong', {}, person.username, rankBadge(person)),
         h('br'),
         h('small', { text: person.display_name || 'online now' })
       )
     );
+
+    ui.myCard.replaceChildren(
+      h('div', { class: 'profile-banner', style: bannerStyle(person.banner_url) }),
+      h('div', { class: 'profile-head' },
+        avatarNode(person, 'big'),
+        h('div', { class: 'profile-head-text' },
+          h('div', { class: 'profile-name' }, person.username, rankBadge(person)),
+          h('div', { class: 'profile-sub', text: person.display_name || '' })
+        )
+      ),
+      h('div', { class: 'profile-bio', text: person.bio || 'no bio yet. click edit profile to add one.' }),
+      h('button', {
+        type: 'button',
+        class: 'btn tiny wide',
+        'data-action': 'edit-profile',
+        text: 'edit profile'
+      })
+    );
+
+    updateAdminButton();
+
+    if (!state.hasOwner && rankOf(person) === 'member') {
+      ui.myCard.append(h('button', {
+        type: 'button',
+        class: 'btn tiny wide',
+        'data-action': 'claim-owner',
+        text: 'claim ownership'
+      }));
+    }
   }
 
   function roomItem(room) {
@@ -736,11 +1034,63 @@
   }
 
   function messageNode(message) {
-    const person = message.person || { username: 'unknown', color: '#000000' };
-    return h('div', { class: 'msg' + (message.sender === state.me.id ? ' mine' : '') },
+    const rawBody = message.body || '';
+    const isSystem = !message.sender || rawBody.indexOf('[ANNOUNCEMENT]') === 0;
+    const person = isSystem
+      ? { username: 'system', color: '#a8001e' }
+      : (message.person || { username: 'unknown', color: '#000000' });
+
+    const mine = !isSystem && message.sender === state.me.id;
+    const imageMatch = rawBody.match(IMAGE_URL_RE);
+    const onlyImage = Boolean(imageMatch && rawBody.trim() === imageMatch[1]);
+
+    const line = h('div', { class: 'msg-line' },
       h('span', { class: 'ts', text: '[' + fmtTime(message.created_at) + '] ' }),
-      h('span', { class: 'nick', style: 'color:' + (person.color || '#000000'), text: '<' + person.username + '> ' }),
-      h('span', { class: 'body', text: message.body })
+      h('span', {
+        class: 'nick',
+        style: 'color:' + (person.color || '#000000'),
+        text: '<' + person.username + '> '
+      }),
+      isSystem ? null : rankBadge(person),
+      isSystem
+        ? h('span', { class: 'body system-body', text: rawBody })
+        : onlyImage
+          ? h('span', { class: 'body muted', text: 'shared an image' })
+          : h('span', { class: 'body', text: rawBody })
+    );
+
+    const quote = message.reply_snippet
+      ? h('div', { class: 'reply-quote', text: 'replying to ' + message.reply_snippet })
+      : null;
+
+    const tools = [];
+    if (!isSystem) {
+      tools.push(h('button', {
+        type: 'button',
+        class: 'msg-tool',
+        'data-reply': message.id,
+        title: 'reply to this message',
+        text: 'reply'
+      }));
+      if (canDeleteMessage(message)) {
+        tools.push(h('button', {
+          type: 'button',
+          class: 'msg-tool danger',
+          'data-delete': message.id,
+          title: 'delete this message',
+          text: 'delete'
+        }));
+      }
+    }
+
+    return h('div', { class: 'msg' + (mine ? ' mine' : '') + (isSystem ? ' system' : '') },
+      avatarNode(person, 'msg-avatar'),
+      h('div', { class: 'msg-main' },
+        quote,
+        line,
+        imageMatch ? imageGate(imageMatch[1]) : null,
+        tools.length ? h('div', { class: 'msg-tools' }, tools) : null
+      )
     );
   }
 
@@ -775,18 +1125,28 @@
     }
 
     if (current.type === 'dm') {
-      ui.userlistTitle.textContent = 'DIRECT MESSAGE';
-      const person = current.person;
-      const online = state.online.has(person.id);
-      ui.memberList.append(
-        h('div', { class: 'profile-card' },
-          h('span', { class: 'avatar big', style: 'background-color:' + person.color }, initial(person.username)),
-          h('div', { class: 'profile-name', text: person.username }),
-          h('div', { class: 'profile-sub', text: person.display_name || '' }),
-          h('div', { class: 'presence ' + (online ? 'on' : 'off'), text: online ? '* online *' : 'offline' })
-        )
-      );
+      ui.userlistTitle.textContent = 'PROFILE';
+      const person = state.people.get(current.person.id) || current.person;
+      ui.memberList.append(profileCardNode(person, state.online.has(person.id)));
       return;
+    }
+
+    if (state.viewingProfile) {
+      const person = state.people.get(state.viewingProfile);
+      if (person) {
+        ui.userlistTitle.textContent = 'PROFILE';
+        ui.memberList.append(
+          h('button', {
+            type: 'button',
+            class: 'btn tiny',
+            'data-action': 'close-profile',
+            text: 'back to room'
+          }),
+          profileCardNode(person, state.online.has(person.id))
+        );
+        return;
+      }
+      state.viewingProfile = null;
     }
 
     ui.userlistTitle.textContent = 'IN THIS ROOM (' + state.members.length + ')';
@@ -799,9 +1159,14 @@
     });
 
     for (const person of sorted) {
-      ui.memberList.append(h('div', { class: 'member' },
+      ui.memberList.append(h('div', {
+        class: 'member',
+        'data-member-id': person.id,
+        title: 'view ' + person.username + "'s profile"
+      },
         h('span', { class: 'dot' + (state.online.has(person.id) ? ' on' : '') }),
-        h('span', { class: 'label', style: 'color:' + (person.color || '#000000'), text: person.username })
+        avatarNode(person, 'tiny'),
+        h('span', { class: 'label', style: 'color:' + (person.color || '#000000') }, person.username, rankBadge(person))
       ));
     }
 
@@ -866,6 +1231,9 @@
     state.current = { type: 'room', id: room.id, room };
     state.messages = [];
     state.members = [];
+    state.viewingProfile = null;
+    state.replyTo = null;
+    renderReplyBar();
     state.unread.delete('room:' + room.id);
     localStorage.setItem('epickchat:last', 'room:' + room.id);
 
@@ -903,6 +1271,9 @@
     state.current = { type: 'dm', id: threadId, person };
     state.messages = [];
     state.members = [];
+    state.viewingProfile = null;
+    state.replyTo = null;
+    renderReplyBar();
     state.unread.delete('friend:' + friendId);
     localStorage.setItem('epickchat:last', 'dm:' + friendId);
 
@@ -928,7 +1299,7 @@
   async function loadRoomMessages(roomId) {
     const { data, error } = await sb
       .from('messages')
-      .select('id, body, created_at, sender, person:profiles!messages_sender_fkey(username, display_name, color)')
+      .select('id, body, created_at, sender, reply_to, reply_snippet, person:profiles!messages_sender_fkey(username, display_name, color, rank, avatar_url, banner_url, bio)')
       .eq('room_id', roomId)
       .order('created_at', { ascending: false })
       .limit(100);
@@ -944,6 +1315,8 @@
       body: row.body,
       created_at: row.created_at,
       sender: row.sender,
+      reply_to: row.reply_to,
+      reply_snippet: row.reply_snippet,
       person: row.person || state.people.get(row.sender) || { username: 'unknown', color: '#000000' }
     }));
   }
@@ -951,7 +1324,7 @@
   async function loadDMMessages(threadId, friendId) {
     const { data, error } = await sb
       .from('dm_messages')
-      .select('id, body, created_at, sender, person:profiles!dm_messages_sender_fkey(username, display_name, color)')
+      .select('id, body, created_at, sender, reply_to, reply_snippet, person:profiles!dm_messages_sender_fkey(username, display_name, color, rank, avatar_url, banner_url, bio)')
       .eq('thread_id', threadId)
       .order('created_at', { ascending: false })
       .limit(100);
@@ -967,6 +1340,8 @@
       body: row.body,
       created_at: row.created_at,
       sender: row.sender,
+      reply_to: row.reply_to,
+      reply_snippet: row.reply_snippet,
       person: row.person || state.people.get(row.sender) || state.people.get(friendId) || { username: 'unknown', color: '#000000' }
     }));
   }
@@ -995,6 +1370,15 @@
         if (!state.current || state.current.type !== current.type || state.current.id !== current.id) return;
         addIncomingMessage(payload.new);
       })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table,
+        filter: column + '=eq.' + current.id
+      }, (payload) => {
+        if (!state.current || state.current.type !== current.type || state.current.id !== current.id) return;
+        if (payload.old) removeMessage(payload.old.id);
+      })
       .subscribe();
 
     state.convChannel = channel;
@@ -1018,6 +1402,8 @@
       body: row.body,
       created_at: row.created_at,
       sender: row.sender,
+      reply_to: row.reply_to,
+      reply_snippet: row.reply_snippet,
       person: person || { username: 'unknown', color: '#000000' }
     };
 
@@ -1026,13 +1412,12 @@
     scrollToBottom(false);
   }
 
-  async function sendMessage(event) {
-    event.preventDefault();
-    const body = ui.messageInput.value.trim();
-    if (!body || !state.current) return;
+  async function sendBody(body) {
+    if (!state.current) return false;
+    if (!body) return false;
     if (body.length > 2000) {
       toast('Message is too long.');
-      return;
+      return false;
     }
 
     const current = state.current;
@@ -1041,18 +1426,58 @@
       ? { room_id: current.id, sender: state.me.id, body }
       : { thread_id: current.id, sender: state.me.id, body };
 
-    ui.messageInput.value = '';
+    if (state.replyTo) {
+      payload.reply_to = state.replyTo.id;
+      payload.reply_snippet = (state.replyTo.person ? state.replyTo.person.username : 'unknown') +
+        ': ' + String(state.replyTo.body || '').slice(0, 90);
+    }
 
     const { data, error } = await sb.from(table).insert(payload).select().single();
     if (error) {
-      ui.messageInput.value = body;
       toast(error.message);
+      return false;
+    }
+
+    state.replyTo = null;
+    renderReplyBar();
+
+    if (!state.current || state.current.type !== current.type || state.current.id !== current.id) return true;
+    await addIncomingMessage(data);
+    scrollToBottom(true);
+    return true;
+  }
+
+  async function sendMessage(event) {
+    event.preventDefault();
+    const body = ui.messageInput.value.trim();
+    if (!body || !state.current) return;
+
+    if (body.charAt(0) === '/') {
+      ui.messageInput.value = '';
+      await runCommand(body);
       return;
     }
 
-    if (!state.current || state.current.type !== current.type || state.current.id !== current.id) return;
-    await addIncomingMessage(data);
-    scrollToBottom(true);
+    ui.messageInput.value = '';
+    const ok = await sendBody(body);
+    if (!ok) ui.messageInput.value = body;
+  }
+
+  async function sendImageFile(file) {
+    if (!file || !state.current) return;
+    if (state.uploading) {
+      toast('Still uploading, hold on.');
+      return;
+    }
+
+    state.uploading = true;
+    toast('Uploading image...');
+    try {
+      const url = await uploadImage(file, 'chat');
+      if (url) await sendBody(url);
+    } finally {
+      state.uploading = false;
+    }
   }
 
   function scrollToBottom(force) {
@@ -1208,7 +1633,7 @@
 
     const { data, error } = await sb
       .from('profiles')
-      .select('id, username, display_name, color')
+      .select('id, username, display_name, color, avatar_url')
       .ilike('username', '%' + query + '%')
       .neq('id', state.me.id)
       .limit(8);
@@ -1437,6 +1862,558 @@
 
     const lobby = state.rooms.find((room) => room.name.toLowerCase() === 'lobby');
     if (lobby) await openRoom(lobby);
+  }
+
+  // ---------- ranks ----------
+  const STAFF_RANKS = ['owner', 'co-owner', 'admin', 'mod'];
+
+  function rankOf(person) {
+    return (person && person.rank) || 'member';
+  }
+
+  function isStaff() {
+    return STAFF_RANKS.indexOf(rankOf(state.profile)) !== -1;
+  }
+
+  function isAdmin() {
+    return ['owner', 'co-owner', 'admin'].indexOf(rankOf(state.profile)) !== -1;
+  }
+
+  function canManageRanks() {
+    return ['owner', 'co-owner'].indexOf(rankOf(state.profile)) !== -1;
+  }
+
+  function rankBadge(person) {
+    const rank = rankOf(person);
+    if (rank === 'member') return null;
+    return h('span', { class: 'rank rank-' + rank, text: '(' + rank + ')' });
+  }
+
+  // ---------- profile editor ----------
+  function openProfileEditor() {
+    const person = state.profile;
+    if (!person) return;
+
+    state.editor = {
+      display_name: person.display_name || '',
+      bio: person.bio || '',
+      color: person.color || '#0a7d32',
+      avatar_url: person.avatar_url || '',
+      banner_url: person.banner_url || ''
+    };
+
+    ui.profileDisplay.value = state.editor.display_name;
+    ui.profileBio.value = state.editor.bio;
+    ui.profileBioCount.textContent = String(state.editor.bio.length);
+    renderEditorPreviews();
+    ui.profileModal.hidden = false;
+    ui.profileDisplay.focus();
+  }
+
+  function closeProfileEditor() {
+    state.editor = null;
+    ui.profileModal.hidden = true;
+  }
+
+  function renderEditorPreviews() {
+    const editor = state.editor;
+    if (!editor || !state.profile) return;
+
+    ui.profileAvatarPreview.replaceChildren(
+      avatarNode({
+        username: state.profile.username,
+        color: editor.color,
+        avatar_url: editor.avatar_url
+      }, 'big')
+    );
+
+    ui.profileBannerPreview.setAttribute('style', bannerStyle(editor.banner_url));
+
+    ui.profileColors.replaceChildren(
+      ...AVATAR_COLORS.map((color) => h('button', {
+        type: 'button',
+        class: 'swatch' + (color === editor.color ? ' active' : ''),
+        style: 'background-color:' + color,
+        'data-color': color,
+        title: color,
+        'aria-label': 'avatar colour ' + color
+      }))
+    );
+
+    const presets = Array.isArray(window.EPICK_BANNERS) ? window.EPICK_BANNERS : [];
+    const tiles = [
+      h('button', {
+        type: 'button',
+        class: 'banner-tile' + (editor.banner_url ? '' : ' active'),
+        'data-banner': '',
+        text: 'no banner'
+      })
+    ];
+
+    for (const preset of presets) {
+      tiles.push(h('button', {
+        type: 'button',
+        class: 'banner-tile' + (editor.banner_url === preset.file ? ' active' : ''),
+        style: bannerStyle(preset.file),
+        'data-banner': preset.file,
+        title: preset.name,
+        'aria-label': 'banner ' + preset.name
+      }));
+    }
+
+    ui.profileBanners.replaceChildren(...tiles);
+  }
+
+  async function uploadImage(file, folder) {
+    if (!file) return null;
+    if (!/^image\//i.test(file.type || '')) {
+      toast('That file is not an image.');
+      return null;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast('Images must be 5 MB or smaller.');
+      return null;
+    }
+
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+    const path = folder + '/' + state.me.id + '/' + Date.now() + '-' +
+      Math.random().toString(36).slice(2, 8) + '.' + ext;
+
+    const { error } = await sb.storage
+      .from('epick')
+      .upload(path, file, { cacheControl: '31536000', contentType: file.type, upsert: false });
+
+    if (error) {
+      console.error('[epick-chat] upload failed', error);
+      toast(/bucket|policy|row-level/i.test(error.message)
+        ? 'Image storage is not ready. Re-run supabase/schema.sql.'
+        : error.message);
+      return null;
+    }
+
+    const { data } = sb.storage.from('epick').getPublicUrl(path);
+    return data && data.publicUrl ? data.publicUrl : null;
+  }
+
+  async function saveProfile() {
+    const editor = state.editor;
+    if (!editor || !state.profile) return;
+
+    const display = ui.profileDisplay.value.trim().slice(0, 30);
+    const bio = ui.profileBio.value.trim().slice(0, 280);
+
+    ui.profileSave.disabled = true;
+    const { data, error } = await sb
+      .from('profiles')
+      .update({
+        display_name: display || state.profile.username,
+        bio,
+        color: editor.color,
+        avatar_url: editor.avatar_url || null,
+        banner_url: editor.banner_url || null
+      })
+      .eq('id', state.me.id)
+      .select()
+      .single();
+    ui.profileSave.disabled = false;
+
+    if (error) {
+      toast(/column|schema cache/i.test(error.message)
+        ? 'Profile columns are missing. Re-run supabase/schema.sql.'
+        : error.message);
+      return;
+    }
+
+    state.profile = data;
+    state.people.set(data.id, data);
+    state.editor = null;
+    ui.profileModal.hidden = true;
+    renderAll();
+    toast('Profile saved.');
+  }
+
+  async function refreshProfile() {
+    const { data } = await sb
+      .from('profiles')
+      .select('*')
+      .eq('id', state.me.id)
+      .maybeSingle();
+    if (data) {
+      state.profile = data;
+      state.people.set(data.id, data);
+    }
+  }
+
+  async function checkOwner() {
+    const { data, error } = await sb
+      .from('profiles')
+      .select('id')
+      .eq('rank', 'owner')
+      .limit(1);
+    if (error) return;
+    state.hasOwner = Array.isArray(data) && data.length > 0;
+  }
+
+  function updateAdminButton() {
+    ui.adminBtn.hidden = !isStaff();
+  }
+
+  async function claimOwner() {
+    const { data, error } = await sb.rpc('claim_owner');
+    if (error) {
+      toast(error.message);
+      return;
+    }
+    if (!data) {
+      toast('Someone already claimed ownership.');
+      await checkOwner();
+      renderMe();
+      return;
+    }
+    toast('You are now the owner.');
+    await checkOwner();
+    await refreshProfile();
+    renderAll();
+  }
+
+  // ---------- message actions ----------
+  function canDeleteMessage(message) {
+    if (!message) return false;
+    if (message.sender && message.sender === state.me.id) return true;
+    return state.current && state.current.type === 'room' && isStaff();
+  }
+
+  function startReply(messageId) {
+    const message = state.messages.find((item) => String(item.id) === String(messageId));
+    if (!message) return;
+    state.replyTo = message;
+    renderReplyBar();
+    ui.messageInput.focus();
+  }
+
+  function cancelReply() {
+    state.replyTo = null;
+    renderReplyBar();
+  }
+
+  function renderReplyBar() {
+    if (!state.replyTo) {
+      ui.replyBar.hidden = true;
+      ui.replyText.textContent = '';
+      return;
+    }
+    const person = state.replyTo.person;
+    const who = person ? person.username : 'unknown';
+    ui.replyText.textContent = 'replying to ' + who + ': ' + String(state.replyTo.body || '').slice(0, 80);
+    ui.replyBar.hidden = false;
+  }
+
+  async function deleteMessage(messageId) {
+    if (!state.current) return;
+    const table = state.current.type === 'room' ? 'messages' : 'dm_messages';
+    if (!window.confirm('Delete this message?')) return;
+
+    const { error } = await sb.from(table).delete().eq('id', messageId);
+    if (error) {
+      toast(error.message);
+      return;
+    }
+    removeMessage(messageId);
+    toast('Message deleted.');
+  }
+
+  function removeMessage(messageId) {
+    if (messageId === null || messageId === undefined) return;
+    if (state.replyTo && String(state.replyTo.id) === String(messageId)) {
+      state.replyTo = null;
+      renderReplyBar();
+    }
+    const before = state.messages.length;
+    state.messages = state.messages.filter((item) => String(item.id) !== String(messageId));
+    if (state.messages.length !== before) renderMessages();
+  }
+
+  // ---------- commands ----------
+  const EIGHT_BALL = [
+    'It is certain.', 'Without a doubt.', 'Yes, definitely.', 'Most likely.',
+    'Ask again later.', 'Cannot predict now.', 'Do not count on it.',
+    'My reply is no.', 'Very doubtful.', 'Signs point to yes.'
+  ];
+
+  function rollDice(spec) {
+    const match = /^(\d{0,2})d(\d{1,3})$/i.exec(spec || '');
+    const count = Math.min(10, Math.max(1, parseInt((match && match[1]) || '1', 10) || 1));
+    const sides = Math.min(1000, Math.max(2, parseInt((match && match[2]) || '20', 10) || 20));
+    const rolls = [];
+    let total = 0;
+    for (let i = 0; i < count; i++) {
+      const value = 1 + Math.floor(Math.random() * sides);
+      rolls.push(value);
+      total += value;
+    }
+    return count > 1
+      ? count + 'd' + sides + ': ' + rolls.join(' + ') + ' = ' + total
+      : 'd' + sides + ': ' + total;
+  }
+
+  async function runCommand(text) {
+    const trimmed = text.trim();
+    if (trimmed.charAt(0) !== '/') return false;
+
+    const space = trimmed.indexOf(' ');
+    const name = (space === -1 ? trimmed.slice(1) : trimmed.slice(1, space)).toLowerCase();
+    const rest = space === -1 ? '' : trimmed.slice(space + 1).trim();
+
+    if (name === 'me') {
+      if (!rest) { toast('usage: /me waves hello'); return true; }
+      await sendBody('* ' + state.profile.username + ' ' + rest);
+      return true;
+    }
+
+    if (name === 'shrug') {
+      await sendBody((rest ? rest + ' ' : '') + '¯\\_(ツ)_/¯');
+      return true;
+    }
+
+    if (name === 'tableflip') { await sendBody('(╯°□°）╯︵ ┻━┻'); return true; }
+    if (name === 'unflip') { await sendBody('┬─┬ノ( º _ ºノ)'); return true; }
+
+    if (name === 'roll') {
+      await sendBody('* ' + state.profile.username + ' rolled ' + rollDice(rest));
+      return true;
+    }
+
+    if (name === 'coinflip') {
+      await sendBody('* ' + state.profile.username + ' flipped ' +
+        (Math.random() < 0.5 ? 'heads' : 'tails'));
+      return true;
+    }
+
+    if (name === '8ball') {
+      if (!rest) { toast('usage: /8ball will it work?'); return true; }
+      await sendBody('* 8-ball says: ' + EIGHT_BALL[Math.floor(Math.random() * EIGHT_BALL.length)]);
+      return true;
+    }
+
+    if (name === 'help') {
+      toast('/me /shrug /tableflip /unflip /roll /coinflip /8ball /help');
+      return true;
+    }
+
+    if (name === 'purge') {
+      if (!isStaff()) { toast('Staff only.'); return true; }
+      if (!state.current || state.current.type !== 'room') { toast('Open a room first.'); return true; }
+      const count = Math.min(100, Math.max(1, parseInt(rest, 10) || 10));
+      if (!window.confirm('Delete the last ' + count + ' messages in this room?')) return true;
+      const { data, error } = await sb.rpc('purge_room', {
+        p_room: state.current.id,
+        p_count: count
+      });
+      if (error) { toast(error.message); return true; }
+      toast('Deleted ' + (data === null ? count : data) + ' messages.');
+      await loadRoomMessages(state.current.id);
+      renderMessages(true);
+      return true;
+    }
+
+    if (name === 'topic') {
+      if (!state.current || state.current.type !== 'room') { toast('Open a room first.'); return true; }
+      const room = state.current.room;
+      if (!isStaff() && room.owner !== state.me.id) { toast('Not allowed.'); return true; }
+      const { error } = await sb.rpc('set_room_topic', {
+        p_room: room.id,
+        p_topic: rest
+      });
+      if (error) { toast(error.message); return true; }
+      room.topic = rest;
+      renderHeader();
+      toast('Topic updated.');
+      return true;
+    }
+
+    if (name === 'announce') {
+      if (!isAdmin()) { toast('Admins only.'); return true; }
+      if (!rest) { toast('usage: /announce hello everyone'); return true; }
+      if (!state.current || state.current.type !== 'room') { toast('Open a room first.'); return true; }
+      const { error } = await sb.rpc('announce', {
+        p_room: state.current.id,
+        p_text: rest
+      });
+      if (error) { toast(error.message); return true; }
+      return true;
+    }
+
+    toast('Unknown command: /' + name);
+    return true;
+  }
+
+  async function runFunCommand(kind) {
+    const map = {
+      '8ball': '/8ball will it work?',
+      coinflip: '/coinflip',
+      roll: '/roll d20',
+      tableflip: '/tableflip',
+      unflip: '/unflip'
+    };
+    const command = map[kind];
+    if (command) await runCommand(command);
+  }
+
+  // ---------- admin panel ----------
+  function openAdminPanel() {
+    if (!isStaff()) {
+      toast('Staff only.');
+      return;
+    }
+    ui.adminModal.hidden = false;
+    ui.adminAnnounce.value = '';
+    renderAdminPanel();
+    loadAdminUsers();
+  }
+
+  function closeAdminPanel() {
+    ui.adminModal.hidden = true;
+  }
+
+  async function loadAdminUsers() {
+    const { data, error } = await sb
+      .from('profiles')
+      .select('id, username, display_name, rank, color, avatar_url')
+      .order('username', { ascending: true })
+      .limit(200);
+
+    if (error) {
+      toast(error.message);
+      return;
+    }
+    state.adminUsers = data || [];
+    for (const person of state.adminUsers) {
+      state.people.set(person.id, Object.assign({}, state.people.get(person.id) || {}, person));
+    }
+    renderAdminUsers();
+  }
+
+  function renderAdminPanel() {
+    renderAdminUsers();
+    renderAdminRooms();
+    const inRoom = Boolean(state.current && state.current.type === 'room');
+    ui.adminAnnounceBtn.disabled = !inRoom || !isAdmin();
+    ui.adminAnnounce.disabled = !isAdmin();
+  }
+
+  function renderAdminUsers() {
+    ui.adminUsers.replaceChildren();
+
+    if (!state.adminUsers.length) {
+      ui.adminUsers.append(h('div', { class: 'muted tiny-pad', text: 'no users loaded' }));
+      return;
+    }
+
+    const allowed = canManageRanks();
+    const ranks = ['owner', 'co-owner', 'admin', 'mod', 'member'];
+
+    for (const person of state.adminUsers) {
+      const select = h('select', { class: 'rank-select', 'data-rank-user': person.id });
+      for (const rank of ranks) {
+        select.append(h('option', {
+          value: rank,
+          text: rank,
+          selected: rankOf(person) === rank ? 'selected' : null
+        }));
+      }
+      select.disabled = !allowed || person.id === state.me.id;
+
+      ui.adminUsers.append(h('div', { class: 'admin-user' },
+        avatarNode(person, 'tiny'),
+        h('span', { class: 'admin-name', text: person.username }),
+        rankBadge(person),
+        select
+      ));
+    }
+  }
+
+  function renderAdminRooms() {
+    ui.adminRooms.replaceChildren();
+
+    const rooms = state.rooms.filter((room) => !room.is_private || state.myRoomIds.has(room.id));
+    if (!rooms.length) {
+      ui.adminRooms.append(h('div', { class: 'muted tiny-pad', text: 'no rooms' }));
+      return;
+    }
+
+    for (const room of rooms) {
+      const row = h('div', { class: 'admin-room' },
+        h('span', { class: 'admin-name', text: (room.is_private ? '*' : '#') + ' ' + room.name }),
+        h('span', { class: 'muted tiny-pad', text: room.topic || '' })
+      );
+      if (isAdmin()) {
+        row.append(h('button', {
+          type: 'button',
+          class: 'btn micro danger',
+          'data-admin-room': room.id,
+          text: 'delete'
+        }));
+      }
+      ui.adminRooms.append(row);
+    }
+  }
+
+  async function changeRank(userId, rank) {
+    const { error } = await sb.rpc('set_rank', { p_user: userId, p_rank: rank });
+    if (error) {
+      toast(error.message);
+      await loadAdminUsers();
+      return;
+    }
+    toast('Rank updated.');
+    await loadAdminUsers();
+    await loadFriends();
+    if (state.current && state.current.type === 'room') {
+      await loadMembers(state.current.id);
+    }
+    renderAll();
+  }
+
+  async function adminDeleteRoom(roomId) {
+    if (!window.confirm('Delete this room and all of its messages?')) return;
+    const { error } = await sb.rpc('admin_delete_room', { p_room: roomId });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+    await loadRooms();
+    renderRooms();
+    renderAdminRooms();
+
+    if (state.current && state.current.type === 'room' && state.current.id === roomId) {
+      state.current = null;
+      state.messages = [];
+      state.members = [];
+      state.replyTo = null;
+      renderReplyBar();
+      renderHeader();
+      renderMessages();
+      renderMembers();
+    }
+
+    toast('Room deleted.');
+  }
+
+  async function sendAnnouncement() {
+    if (!state.current || state.current.type !== 'room') {
+      toast('Open a room first.');
+      return;
+    }
+    const text = ui.adminAnnounce.value.trim();
+    if (!text) return;
+
+    const { error } = await sb.rpc('announce', { p_room: state.current.id, p_text: text });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+    ui.adminAnnounce.value = '';
+    toast('Announcement sent.');
   }
 
   // ---------- misc ----------
