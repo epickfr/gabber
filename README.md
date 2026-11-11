@@ -16,6 +16,8 @@ The design is built the way a webmaster of 2000-2001 would actually build it: HT
 - Modcalls: anyone can call a mod into a room, staff see the open queue in the admin panel
 - Notification bell: mentions, new DMs, room changes, kicks/mutes, and a "while you were away" summary
 - Optional desktop alerts for mentions, DMs, and modcalls while the tab is hidden
+- Top navigation switches between Home, Chat, Rooms (a public room directory), and Friends
+- Open rooms and DMs appear as conversation tabs at the top; click to switch, or close them with the x button
 - Live messages, replies, and online dots via Supabase Realtime
 - Message deletion (your own messages; staff can delete anyone's in rooms)
 - Ranks shown next to names: `(owner)`, `(co-owner)`, `(admin)`, `(mod)`

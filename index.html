@@ -55,23 +55,19 @@
 
   <tr>
     <td class="nav-bar">
-      <a href="#top" class="nav-link">home</a>
-      <span class="nav-sep">|</span>
-      <a href="#chat" class="nav-link">chat</a>
-      <span class="nav-sep">|</span>
-      <a href="#top" class="nav-link" data-nav="rooms">rooms</a>
-      <span id="nav-user" hidden>
-        <span class="nav-sep">|</span>
-        <a href="#" class="nav-link" data-nav="new-room">new room</a>
-        <span class="nav-sep">|</span>
-        <a href="#" class="nav-link" data-nav="join-room">join room</a>
-        <span class="nav-sep">|</span>
-        <a href="#" class="nav-link" data-nav="profile">profile</a>
-        <span class="nav-sep">|</span>
-        <a href="#" class="nav-link" id="nav-admin" data-nav="admin" hidden>admin</a>
-        <span class="nav-sep">|</span>
-        <a href="#" class="nav-link" data-nav="logout">log out</a>
-      </span>
+      <div class="nav-tabs">
+        <a href="#top" class="nav-link active" data-nav="home">home</a>
+        <a href="#chat" class="nav-link" data-nav="chat">chat</a>
+        <a href="#" class="nav-link" data-nav="rooms">rooms</a>
+        <a href="#" class="nav-link" data-nav="friends">friends</a>
+        <span id="nav-user" hidden>
+          <a href="#" class="nav-link" data-nav="new-room">new room</a>
+          <a href="#" class="nav-link" data-nav="join-room">join room</a>
+          <a href="#" class="nav-link" data-nav="profile">profile</a>
+          <a href="#" class="nav-link" id="nav-admin" data-nav="admin" hidden>admin</a>
+          <a href="#" class="nav-link" data-nav="logout">log out</a>
+        </span>
+      </div>
     </td>
   </tr>
 
@@ -83,6 +79,10 @@
       </div>
 
       <main id="app-window" hidden>
+
+        <div id="room-tabs-bar" class="room-tabs-bar" hidden>
+          <div id="room-tabs" class="room-tabs"></div>
+        </div>
 
         <table id="app-body" class="layout" width="100%" border="0" cellpadding="0" cellspacing="0">
           <tr>
@@ -116,8 +116,8 @@
                   <form id="add-friend-form" action="#" method="post" autocomplete="off" class="find-form">
                     <label for="friend-search">find a user</label>
                     <div class="find-row">
-                      <input id="friend-search" type="text" maxlength="20">
-                      <button type="submit" class="btn tiny">find</button>
+                      <div class="row-cell grow"><input id="friend-search" type="text" maxlength="20"></div>
+                      <div class="row-cell fit"><button type="submit" class="btn tiny">find</button></div>
                     </div>
                   </form>
                   <div id="friend-results" class="side-list"></div>
@@ -129,7 +129,7 @@
             <td class="col-mid chat">
               <a name="chat"></a>
 
-              <table class="box chat-box" width="100%" height="100%" border="0" cellpadding="0" cellspacing="0">
+              <table class="box chat-box" id="chat-panel" width="100%" height="100%" border="0" cellpadding="0" cellspacing="0">
                 <tr>
                   <td class="box-head chat-head" id="channel-header">
                     <div class="chat-head-line">
@@ -154,14 +154,64 @@
                         <button type="button" id="reply-cancel" class="linkbtn">cancel</button>
                       </div>
                       <div class="composer-row">
-                        <button type="button" id="image-btn" class="btn" title="Send an image">image</button>
-                        <input id="message-input" type="text" maxlength="2000" placeholder="type a message, /help for commands">
-                        <button type="submit" id="composer-submit" class="btn primary">Send</button>
+                        <div class="row-cell fit"><button type="button" id="image-btn" class="btn" title="Send an image">image</button></div>
+                        <div class="row-cell grow"><input id="message-input" type="text" maxlength="2000" placeholder="type a message, /help for commands"></div>
+                        <div class="row-cell fit"><button type="submit" id="composer-submit" class="btn primary">Send</button></div>
                       </div>
                       <input id="image-file" type="file" accept="image/*" hidden>
                     </form>
                   </td>
                 </tr>
+              </table>
+
+              <table class="box" id="home-panel" width="100%" border="0" cellpadding="0" cellspacing="0" hidden>
+                <tr><td class="box-head">WELCOME TO EPICK CHAT</td></tr>
+                <tr><td class="box-body home-panel-body">
+                  <div class="home-hero">
+                    <div class="home-hero-title">a free chat system for the world wide web</div>
+                    <p>Pick a room, add friends, and talk in real time. No email address is needed.</p>
+                  </div>
+                  <table width="100%" border="0" cellpadding="0" cellspacing="0" class="home-grid">
+                    <tr>
+                      <td width="33%" valign="top" class="home-tile">
+                        <div class="home-tile-head">CHAT</div>
+                        <p>Jump back into the conversation.</p>
+                        <button type="button" class="btn" data-nav="chat">open chat</button>
+                      </td>
+                      <td width="33%" valign="top" class="home-tile">
+                        <div class="home-tile-head">ROOMS</div>
+                        <p>Find a public room or start your own.</p>
+                        <button type="button" class="btn" data-nav="rooms">room list</button>
+                      </td>
+                      <td width="33%" valign="top" class="home-tile">
+                        <div class="home-tile-head">FRIENDS</div>
+                        <p>See who is online and send a private message.</p>
+                        <button type="button" class="btn" data-nav="friends">friends</button>
+                      </td>
+                    </tr>
+                  </table>
+                  <div class="home-note">Tip: type <tt>/help</tt> in chat for the command list.</div>
+                </td></tr>
+              </table>
+
+              <table class="box" id="rooms-panel" width="100%" border="0" cellpadding="0" cellspacing="0" hidden>
+                <tr><td class="box-head">ROOM DIRECTORY</td></tr>
+                <tr><td class="box-body">
+                  <div class="panel-intro">Public rooms on Epick Chat. Open one to join, or start your own.</div>
+                  <div id="rooms-panel-body" class="directory-wrap"></div>
+                  <div class="panel-actions">
+                    <button type="button" id="rooms-panel-new" class="btn">new room</button>
+                    <button type="button" id="rooms-panel-join" class="btn">join by invite code</button>
+                  </div>
+                </td></tr>
+              </table>
+
+              <table class="box" id="friends-panel" width="100%" border="0" cellpadding="0" cellspacing="0" hidden>
+                <tr><td class="box-head">FRIENDS</td></tr>
+                <tr><td class="box-body">
+                  <div class="panel-intro">Your friends and pending requests. Use the find box on the left to add someone.</div>
+                  <div id="friends-panel-body" class="directory-wrap"></div>
+                </td></tr>
               </table>
 
             </td>
@@ -464,8 +514,8 @@
       <div class="admin-section">
         <div class="admin-title">ANNOUNCE</div>
         <div class="admin-row">
-          <input id="admin-announce" type="text" maxlength="500" placeholder="message to post as a system notice">
-          <button type="button" id="admin-announce-btn" class="btn primary">send</button>
+          <div class="row-cell grow"><input id="admin-announce" type="text" maxlength="500" placeholder="message to post as a system notice"></div>
+          <div class="row-cell fit"><button type="button" id="admin-announce-btn" class="btn primary">send</button></div>
         </div>
         <div class="hint">Posts to the room you are currently viewing.</div>
       </div>
@@ -473,16 +523,16 @@
       <div class="admin-section">
         <div class="admin-title">GLOBAL</div>
         <div class="admin-row">
-          <input id="admin-global-text" type="text" maxlength="500" placeholder="message to post in every room">
-          <button type="button" id="admin-global-send" class="btn primary">broadcast</button>
+          <div class="row-cell grow"><input id="admin-global-text" type="text" maxlength="500" placeholder="message to post in every room"></div>
+          <div class="row-cell fit"><button type="button" id="admin-global-send" class="btn primary">broadcast</button></div>
         </div>
         <div class="admin-row">
-          <button type="button" id="admin-global-lock" class="btn danger">lock all rooms</button>
-          <button type="button" id="admin-global-unlock" class="btn">unlock all rooms</button>
+          <div class="row-cell fit"><button type="button" id="admin-global-lock" class="btn danger">lock all rooms</button></div>
+          <div class="row-cell fit"><button type="button" id="admin-global-unlock" class="btn">unlock all rooms</button></div>
         </div>
         <div class="admin-row">
-          <input id="admin-global-slow" type="number" min="0" max="300" step="1" value="0" class="short-input">
-          <button type="button" id="admin-global-slow-btn" class="btn">apply slowmode to all rooms</button>
+          <div class="row-cell fit"><input id="admin-global-slow" type="number" min="0" max="300" step="1" value="0" class="short-input"></div>
+          <div class="row-cell fit"><button type="button" id="admin-global-slow-btn" class="btn">apply slowmode to all rooms</button></div>
         </div>
         <div class="hint">A locked room only lets the room owner and staff talk. Broadcasts post as a red system line everywhere.</div>
       </div>

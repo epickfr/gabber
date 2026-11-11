@@ -264,7 +264,10 @@
       awayTimer: null,
       roomDraft: null,
       modCalls: [],
-      lastSent: new Map()
+      lastSent: new Map(),
+      view: 'chat',
+      openTabs: [],
+      activeTabKey: null
     };
   }
   let state = freshState();
@@ -286,6 +289,16 @@
     appBody: $id('app-body'),
     sidebarToggle: $id('sidebar-toggle'),
     sidebarMe: $id('sidebar-me'),
+    roomTabsBar: $id('room-tabs-bar'),
+    roomTabs: $id('room-tabs'),
+    homePanel: $id('home-panel'),
+    chatPanel: $id('chat-panel'),
+    roomsPanel: $id('rooms-panel'),
+    roomsPanelBody: $id('rooms-panel-body'),
+    roomsPanelNew: $id('rooms-panel-new'),
+    roomsPanelJoin: $id('rooms-panel-join'),
+    friendsPanel: $id('friends-panel'),
+    friendsPanelBody: $id('friends-panel-body'),
     myRooms: $id('my-rooms'),
     publicRooms: $id('public-rooms'),
     friendCount: $id('friend-count'),
@@ -464,6 +477,7 @@
       ui.navUser.hidden = false;
       updateAlertsButton();
       renderAll();
+      showView('chat');
 
       startPresence();
       startGlobalRealtime();
@@ -528,6 +542,12 @@
     ui.channelName.textContent = '-';
     ui.channelTopic.textContent = 'select a room or a friend to start chatting';
     ui.channelActions.replaceChildren();
+    ui.roomTabsBar.hidden = true;
+    ui.roomTabs.replaceChildren();
+    ui.roomsPanelBody.replaceChildren();
+    ui.friendsPanelBody.replaceChildren();
+    showView('home');
+    setActiveNav('home');
     setConnection('offline');
     updateTitle();
   }
@@ -884,24 +904,31 @@
       const link = event.target.closest('[data-nav]');
       if (!link) return;
       const nav = link.dataset.nav;
+      event.preventDefault();
 
-      if (nav === 'rooms') {
-        event.preventDefault();
+      if (nav === 'home') {
+        showView('home');
+        setActiveNav('home');
         window.scrollTo(0, 0);
+      } else if (nav === 'chat') {
+        showView('chat');
+        setActiveNav('chat');
+        if (!isMobile()) ui.messageInput.focus();
+      } else if (nav === 'rooms') {
+        showView('rooms');
+        setActiveNav('rooms');
+      } else if (nav === 'friends') {
+        showView('friends');
+        setActiveNav('friends');
       } else if (nav === 'new-room') {
-        event.preventDefault();
         openNewRoomModal();
       } else if (nav === 'join-room') {
-        event.preventDefault();
         openJoinRoomModal();
       } else if (nav === 'profile') {
-        event.preventDefault();
         openProfileEditor();
       } else if (nav === 'admin') {
-        event.preventDefault();
         openAdminPanel();
       } else if (nav === 'logout') {
-        event.preventDefault();
         sb.auth.signOut();
       }
     });
@@ -925,6 +952,44 @@
 
     ui.myRooms.addEventListener('click', onRoomClick);
     ui.publicRooms.addEventListener('click', onRoomClick);
+
+    if (ui.roomTabs) {
+      ui.roomTabs.addEventListener('click', (event) => {
+        const close = event.target.closest('[data-tab-close]');
+        if (close) {
+          closeTab(close.dataset.tabClose);
+          return;
+        }
+        const tab = event.target.closest('[data-tab-key]');
+        if (tab) activateTab(tab.dataset.tabKey);
+      });
+    }
+
+    if (ui.roomsPanelBody) {
+      ui.roomsPanelBody.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-open-room]');
+        if (!button) return;
+        const room = state.rooms.find((entry) => entry.id === button.dataset.openRoom);
+        if (room) openRoom(room);
+      });
+    }
+
+    if (ui.roomsPanelNew) ui.roomsPanelNew.addEventListener('click', openNewRoomModal);
+    if (ui.roomsPanelJoin) ui.roomsPanelJoin.addEventListener('click', openJoinRoomModal);
+
+    if (ui.friendsPanelBody) {
+      ui.friendsPanelBody.addEventListener('click', (event) => {
+        const open = event.target.closest('[data-open-dm]');
+        if (open) {
+          openDM(open.dataset.openDm);
+          return;
+        }
+        const accept = event.target.closest('[data-accept]');
+        const decline = event.target.closest('[data-decline]');
+        if (accept) acceptRequest(accept.dataset.accept);
+        if (decline) declineRequest(decline.dataset.decline);
+      });
+    }
 
     ui.friends.addEventListener('click', (event) => {
       const button = event.target.closest('[data-friend-id]');
@@ -1450,6 +1515,9 @@
     renderMessages();
     renderMembers();
     renderStatus();
+    renderTabs();
+    if (state.view === 'rooms') renderRoomsPanel();
+    if (state.view === 'friends') renderFriendsPanel();
   }
 
   function profileCardNode(person, online, options) {
@@ -1561,6 +1629,8 @@
 
     if (publicRooms.length) publicRooms.forEach((room) => ui.publicRooms.append(roomItem(room)));
     else ui.publicRooms.append(h('div', { class: 'muted tiny-pad', text: 'no public rooms' }));
+
+    if (state.view === 'rooms') renderRoomsPanel();
   }
 
   function renderFriends() {
@@ -1588,6 +1658,8 @@
         unread ? h('span', { class: 'badge', text: String(unread) }) : null
       ));
     }
+
+    if (state.view === 'friends') renderFriendsPanel();
   }
 
   function renderRequests() {
@@ -1612,6 +1684,226 @@
     if (state.outgoing.length) {
       const names = state.outgoing.map((entry) => entry.person.username).join(', ');
       ui.friendRequests.append(h('div', { class: 'outgoing', text: 'waiting on: ' + names }));
+    }
+  }
+
+  function setActiveNav(name) {
+    document.querySelectorAll('.nav-link[data-nav]').forEach((link) => {
+      link.classList.toggle('active', link.dataset.nav === name);
+    });
+  }
+
+  function showView(view) {
+    state.view = view;
+    if (ui.homePanel) ui.homePanel.hidden = view !== 'home';
+    if (ui.chatPanel) ui.chatPanel.hidden = view !== 'chat';
+    if (ui.roomsPanel) ui.roomsPanel.hidden = view !== 'rooms';
+    if (ui.friendsPanel) ui.friendsPanel.hidden = view !== 'friends';
+    if (view === 'rooms') renderRoomsPanel();
+    if (view === 'friends') renderFriendsPanel();
+    setActiveNav(view);
+  }
+
+  function tabKey(type, id) {
+    return type + ':' + id;
+  }
+
+  function addTab(type, id, name) {
+    const key = tabKey(type, id);
+    let tab = state.openTabs.find((entry) => entry.key === key);
+
+    if (!tab) {
+      tab = { key, type, id, name };
+      state.openTabs.push(tab);
+      if (state.openTabs.length > 12) state.openTabs.shift();
+    } else {
+      tab.name = name;
+    }
+
+    state.activeTabKey = key;
+    renderTabs();
+  }
+
+  function renderTabs() {
+    if (!ui.roomTabs || !ui.roomTabsBar) return;
+
+    ui.roomTabsBar.hidden = state.openTabs.length === 0;
+    ui.roomTabs.replaceChildren();
+
+    for (const tab of state.openTabs) {
+      const active = tab.key === state.activeTabKey;
+      ui.roomTabs.append(h('span', { class: 'room-tab' + (active ? ' active' : '') },
+        h('button', {
+          type: 'button',
+          class: 'room-tab-name',
+          'data-tab-key': tab.key,
+          text: (tab.type === 'dm' ? '@ ' : '# ') + tab.name
+        }),
+        h('button', {
+          type: 'button',
+          class: 'room-tab-close',
+          'data-tab-close': tab.key,
+          title: 'close tab',
+          text: 'x'
+        })
+      ));
+    }
+  }
+
+  async function activateTab(key) {
+    const tab = state.openTabs.find((entry) => entry.key === key);
+    if (!tab) return;
+
+    if (tab.type === 'room') {
+      const room = state.rooms.find((entry) => entry.id === tab.id);
+      if (room) {
+        await openRoom(room);
+      } else {
+        removeTab(key);
+        toast('That room is gone.');
+      }
+      return;
+    }
+
+    if (tab.type === 'dm') {
+      const person = state.people.get(tab.id);
+      if (person) await openDM(tab.id);
+      else {
+        removeTab(key);
+        toast('That friend is no longer available.');
+      }
+    }
+  }
+
+  function removeTab(key) {
+    const index = state.openTabs.findIndex((entry) => entry.key === key);
+    if (index === -1) return;
+
+    const wasActive = state.activeTabKey === key;
+    state.openTabs.splice(index, 1);
+
+    if (wasActive) {
+      const next = state.openTabs[index] || state.openTabs[index - 1];
+      if (next) {
+        state.activeTabKey = next.key;
+        activateTab(next.key);
+      } else {
+        state.activeTabKey = null;
+        unsubscribeConversation();
+        state.current = null;
+        state.messages = [];
+        state.members = [];
+        renderHeader();
+        renderMessages();
+        renderMembers();
+      }
+    }
+
+    renderTabs();
+  }
+
+  function closeTab(key) {
+    removeTab(key);
+  }
+
+  function dropTab(key) {
+    state.openTabs = state.openTabs.filter((entry) => entry.key !== key);
+    if (state.activeTabKey === key) state.activeTabKey = null;
+    renderTabs();
+  }
+
+  function renderRoomsPanel() {
+    if (!ui.roomsPanelBody) return;
+    ui.roomsPanelBody.replaceChildren();
+
+    const publicRooms = state.rooms
+      .filter((room) => !room.is_private)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    if (!publicRooms.length) {
+      ui.roomsPanelBody.append(h('div', { class: 'empty', text: 'no public rooms yet.' }));
+      return;
+    }
+
+    const body = h('tbody');
+    for (const room of publicRooms) {
+      const count = state.roomCounts.get(room.id) || 0;
+      body.append(h('tr', {},
+        h('td', {},
+          h('button', {
+            type: 'button',
+            class: 'linkbtn',
+            'data-open-room': room.id,
+            text: (room.is_private ? '* ' : '# ') + room.name
+          })
+        ),
+        h('td', { class: 'muted', text: room.topic || 'no topic' }),
+        h('td', { class: 'num', text: String(count) }),
+        h('td', {},
+          h('button', {
+            type: 'button',
+            class: 'btn tiny',
+            'data-open-room': room.id,
+            text: 'open'
+          })
+        )
+      ));
+    }
+
+    ui.roomsPanelBody.append(h('table', {
+      class: 'directory',
+      width: '100%',
+      border: '0',
+      cellpadding: '0',
+      cellspacing: '0'
+    },
+      h('thead', {}, h('tr', {},
+        h('th', { text: 'room' }),
+        h('th', { text: 'topic' }),
+        h('th', { text: 'people' }),
+        h('th', { text: '' })
+      )),
+      body
+    ));
+  }
+
+  function renderFriendsPanel() {
+    if (!ui.friendsPanelBody) return;
+    ui.friendsPanelBody.replaceChildren();
+
+    if (state.incoming.length) {
+      const box = h('div', { class: 'requests' },
+        h('div', { class: 'muted', text: 'friend requests' })
+      );
+      for (const { link, person } of state.incoming) {
+        box.append(h('div', { class: 'request' },
+          h('span', { class: 'label', text: person.username + ' ' }),
+          h('span', { class: 'request-actions' },
+            h('button', { type: 'button', class: 'btn micro', 'data-accept': link.id, text: 'ok' }),
+            h('button', { type: 'button', class: 'btn micro', 'data-decline': link.id, text: 'no' })
+          )
+        ));
+      }
+      ui.friendsPanelBody.append(box);
+    }
+
+    if (!state.friends.length) {
+      ui.friendsPanelBody.append(h('div', { class: 'empty', text: 'no friends yet. use the find box on the left.' }));
+      return;
+    }
+
+    for (const { person } of state.friends) {
+      const online = state.online.has(person.id);
+      ui.friendsPanelBody.append(h('div', { class: 'directory-row' },
+        h('span', { class: 'dot' + (online ? ' on' : '') }),
+        h('span', { class: 'grow' }, person.username, rankBadge(person)),
+        h('button', {
+          type: 'button',
+          class: 'btn tiny',
+          'data-open-dm': person.id,
+          text: 'message'
+        })
+      ));
     }
   }
 
@@ -1971,6 +2263,8 @@
 
     unsubscribeConversation();
     state.current = { type: 'room', id: room.id, room };
+    addTab('room', room.id, room.name);
+    showView('chat');
     state.messages = [];
     state.members = [];
     state.viewingProfile = null;
@@ -2015,6 +2309,8 @@
     state.threadToFriend.set(threadId, friendId);
     unsubscribeConversation();
     state.current = { type: 'dm', id: threadId, person };
+    addTab('dm', friendId, person.username);
+    showView('chat');
     state.messages = [];
     state.members = [];
     state.viewingProfile = null;
@@ -2566,6 +2862,7 @@
     state.myRoomIds.delete(room.id);
     state.unread.delete('room:' + room.id);
     state.current = null;
+    dropTab('room:' + room.id);
 
     await loadRooms();
     renderRooms();
@@ -2599,6 +2896,7 @@
     state.myRoomIds.delete(room.id);
     state.unread.delete('room:' + room.id);
     state.current = null;
+    dropTab('room:' + room.id);
 
     await loadRooms();
     renderRooms();
@@ -2631,6 +2929,7 @@
     }
 
     state.current = null;
+    dropTab('dm:' + current.person.id);
     state.unread.delete('friend:' + current.person.id);
     await loadFriends();
     renderFriends();
