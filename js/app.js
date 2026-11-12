@@ -123,6 +123,11 @@
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
+  const safeColor = (color) => {
+    const value = String(color || '').trim();
+    return /^#[0-9a-f]{6}$/i.test(value) ? value : '#000000';
+  };
+
   const initial = (name) => (name || '?').slice(0, 1).toUpperCase();
 
   const IMAGE_URL_RE = /(https?:\/\/[^\s<>"']+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\?[^\s<>"']*)?)/i;
@@ -142,7 +147,7 @@
 
   function avatarNode(person, extraClass) {
     const cls = 'avatar' + (extraClass ? ' ' + extraClass : '');
-    const color = (person && person.color) || '#555555';
+    const color = safeColor(person && person.color) || '#555555';
     const name = (person && person.username) || '?';
 
     if (person && person.avatar_url) {
@@ -1534,7 +1539,9 @@
     if (state.notifChannel || !state.me) return;
 
     const channel = sb
-      .channel('epickchat-notif-' + state.me.id)
+      .channel('epickchat-notif-' + state.me.id, {
+        config: { private: true }
+      })
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -2191,7 +2198,7 @@
       h('span', { class: 'ts', text: '[' + fmtTime(message.created_at) + '] ' }),
       h('span', {
         class: styledNameClass('nick', isSystem ? null : person),
-        style: 'color:' + (person.color || '#000000'),
+        style: 'color:' + safeColor(person.color),
         text: '<' + person.username + '> '
       }),
       isSystem ? null : verifyBadge(person),
@@ -2429,7 +2436,7 @@
       },
         h('span', { class: 'dot' + (state.online.has(person.id) ? ' on' : '') }),
         avatarNode(person, 'tiny'),
-        h('span', { class: styledNameClass('label', person), style: 'color:' + (person.color || '#000000') }, person.username, verifyBadge(person), rankBadge(person))
+        h('span', { class: styledNameClass('label', person), style: 'color:' + safeColor(person.color) }, person.username, verifyBadge(person), rankBadge(person))
       ));
     }
 
@@ -2709,7 +2716,9 @@
     const table = current.type === 'room' ? 'messages' : 'dm_messages';
     const column = current.type === 'room' ? 'room_id' : 'thread_id';
     const channel = sb
-      .channel('epickchat-conv-' + current.type + '-' + current.id)
+      .channel('epickchat-conv-' + current.type + '-' + current.id, {
+        config: { private: true }
+      })
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -2893,7 +2902,7 @@
     if (state.presenceChannel) return;
 
     const channel = sb.channel('epickchat-online', {
-      config: { presence: { key: state.me.id } }
+      config: { private: true, presence: { key: state.me.id } }
     });
 
     channel.on('presence', { event: 'sync' }, () => {
@@ -2969,7 +2978,9 @@
     if (state.globalChannel) return;
 
     const channel = sb
-      .channel('epickchat-events')
+      .channel('epickchat-events', {
+        config: { private: true }
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => {
         reloadFriendsSoon();
       })

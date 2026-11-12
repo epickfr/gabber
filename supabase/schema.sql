@@ -91,6 +91,9 @@ create index if not exists messages_room_created_idx on public.messages (room_id
 create index if not exists dm_messages_thread_created_idx on public.dm_messages (thread_id, created_at desc);
 create index if not exists room_members_user_idx on public.room_members (user_id);
 create index if not exists friendships_addressee_idx on public.friendships (addressee);
+create index if not exists messages_sender_created_idx on public.messages (sender, created_at desc);
+create index if not exists dm_messages_sender_created_idx on public.dm_messages (sender, created_at desc);
+create index if not exists friendships_requester_created_idx on public.friendships (requester, created_at desc);
 
 insert into public.rooms (id, name, topic, is_private, owner)
 values ('00000000-0000-0000-0000-000000000001', 'lobby', 'Welcome to Epick Chat. Be excellent to each other.', false, null)
@@ -284,6 +287,12 @@ create policy "friendships_insert_own" on public.friendships
     and addressee <> auth.uid()
     and status = 'pending'
     and not public.is_banned()
+    and (select count(*) from public.friendships
+         where requester = auth.uid()
+           and created_at > now() - interval '1 minute') < 20
+    and (select count(*) from public.friendships
+         where requester = auth.uid()
+           and created_at > now() - interval '1 day') < 100
   );
 
 drop policy if exists "friendships_update_accept" on public.friendships;
@@ -351,6 +360,9 @@ create policy "messages_insert" on public.messages
     sender = auth.uid()
     and not public.is_banned()
     and public.can_post_room(room_id)
+    and (select count(*) from public.messages
+         where sender = auth.uid()
+           and created_at > now() - interval '1 minute') < 60
   );
 
 drop policy if exists "messages_delete" on public.messages;
@@ -385,6 +397,9 @@ create policy "dm_messages_insert" on public.dm_messages
     sender = auth.uid()
     and not public.is_banned()
     and public.in_dm_thread(thread_id)
+    and (select count(*) from public.dm_messages
+         where sender = auth.uid()
+           and created_at > now() - interval '1 minute') < 60
   );
 
 drop policy if exists "dm_messages_delete" on public.dm_messages;
@@ -434,7 +449,7 @@ begin
   if length(p_name) > 32 then raise exception 'Room name is too long'; end if;
 
   if p_private then
-    code := lower(substr(md5(random()::text || clock_timestamp()::text), 1, 10));
+    code := lower(substr(md5(random()::text || clock_timestamp()::text), 1, 16));
   end if;
 
   insert into public.rooms (name, topic, is_private, invite_code, owner)
@@ -710,7 +725,7 @@ on conflict (id) do update set public = true;
 
 drop policy if exists "epick bucket read" on storage.objects;
 create policy "epick bucket read" on storage.objects
-  for select to anon, authenticated
+  for select to authenticated
   using (bucket_id = 'epick');
 
 drop policy if exists "epick bucket insert" on storage.objects;
@@ -1425,6 +1440,22 @@ begin
 end;
 $$;
 grant execute on function public.global_slowmode(integer) to authenticated;
+
+alter table public.profiles drop constraint if exists profiles_bio_len;
+alter table public.profiles
+  add constraint profiles_bio_len check (char_length(coalesce(bio, '')) <= 500) not valid;
+
+alter table public.profiles drop constraint if exists profiles_display_len;
+alter table public.profiles
+  add constraint profiles_display_len check (char_length(coalesce(display_name, '')) <= 30) not valid;
+
+alter table public.messages drop constraint if exists messages_reply_snippet_len;
+alter table public.messages
+  add constraint messages_reply_snippet_len check (char_length(coalesce(reply_snippet, '')) <= 200) not valid;
+
+alter table public.dm_messages drop constraint if exists dm_messages_reply_snippet_len;
+alter table public.dm_messages
+  add constraint dm_messages_reply_snippet_len check (char_length(coalesce(reply_snippet, '')) <= 200) not valid;
 
 alter table public.rooms add column if not exists pinned_message_id bigint;
 
