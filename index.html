@@ -60,6 +60,7 @@
         <a href="#chat" class="nav-link" data-nav="chat">chat</a>
         <a href="#" class="nav-link" data-nav="rooms">rooms</a>
         <a href="#" class="nav-link" data-nav="friends">friends</a>
+        <a href="#" class="nav-link" data-nav="new-users">new users</a>
         <span id="nav-user" hidden>
           <a href="#" class="nav-link" data-nav="new-room">new room</a>
           <a href="#" class="nav-link" data-nav="join-room">join room</a>
@@ -73,10 +74,6 @@
 
   <tr>
     <td class="page-body">
-
-      <div class="mobile-bar">
-        <button type="button" id="sidebar-toggle" class="linkbtn">[ rooms &amp; friends ]</button>
-      </div>
 
       <main id="app-window" hidden>
 
@@ -220,6 +217,14 @@
                 </td></tr>
               </table>
 
+              <table class="box" id="newusers-panel" width="100%" border="0" cellpadding="0" cellspacing="0" hidden>
+                <tr><td class="box-head">NEW USERS</td></tr>
+                <tr><td class="box-body">
+                  <div class="panel-intro">The newest members in Epick Chat, most recent first.</div>
+                  <div id="newusers-panel-body" class="directory-wrap"></div>
+                </td></tr>
+              </table>
+
             </td>
 
             <td class="col-right rightbar">
@@ -252,6 +257,8 @@
               <span id="status-user">guest</span>
               <span class="status-sep">|</span>
               <span id="status-online">0 online</span>
+              <span class="status-sep">|</span>
+              <span id="status-uptime">up 0d 00h 00m</span>
             </td>
             <td class="status-right">
               <span id="status-clock">--:--:--</span>
@@ -464,6 +471,11 @@
         <label for="room-topic">Topic</label>
         <input id="room-topic" type="text" maxlength="200">
       </div>
+      <div class="field-block">
+        <label for="room-rules">Room rules</label>
+        <textarea id="room-rules" maxlength="1000" rows="3" placeholder="what should members know before entering this room?"></textarea>
+        <div class="hint right"><span id="room-rules-count">0</span> / 1000 &middot; shown to visitors before they enter.</div>
+      </div>
       <div class="field-row">
         <label for="room-welcome">Welcome</label>
         <input id="room-welcome" type="text" maxlength="200" placeholder="shown when someone opens the room">
@@ -603,6 +615,23 @@
   </div>
 </div>
 
+<div id="rules-modal" class="modal" hidden>
+  <div class="modal-box small rules-box" role="dialog" aria-modal="true" aria-labelledby="rules-modal-title">
+    <div class="modal-head">
+      <span id="rules-modal-title">ROOM RULES</span>
+    </div>
+    <div class="modal-body">
+      <div id="rules-modal-room" class="rules-room"># room</div>
+      <div id="rules-modal-text" class="rules-text"></div>
+      <label class="check-row" for="rules-dont-show"><input type="checkbox" id="rules-dont-show" checked> don't show me this again</label>
+    </div>
+    <div class="modal-foot">
+      <button type="button" id="rules-accept" class="btn primary">i agree &amp; enter</button>
+      <button type="button" id="rules-decline" class="btn">decline</button>
+    </div>
+  </div>
+</div>
+
 <div id="dialog-modal" class="modal" hidden>
   <div class="modal-box small" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
     <div class="modal-head">
@@ -672,6 +701,14 @@
     </div>
   </div>
 </div>
+
+<nav id="mobile-nav" role="navigation" aria-label="site sections">
+  <button type="button" class="mobile-nav-item" data-nav="rooms" aria-label="rooms">rooms</button>
+  <button type="button" class="mobile-nav-item active" data-nav="chat" aria-label="chat">chat</button>
+  <button type="button" class="mobile-nav-item" data-nav="friends" aria-label="friends">friends</button>
+  <button type="button" class="mobile-nav-item" data-nav="new-users" aria-label="new users">new users</button>
+  <button type="button" class="mobile-nav-item" data-nav="profile" aria-label="profile">profile</button>
+</nav>
 
 <div id="toast" class="toast" hidden></div>
 

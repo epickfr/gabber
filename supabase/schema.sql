@@ -130,6 +130,13 @@ begin
   insert into public.profiles (id, username, display_name, color)
   values (new.id, uname, dname, public.pick_color());
 
+  insert into public.messages (room_id, sender, body)
+  values (
+    '00000000-0000-0000-0000-000000000001',
+    null,
+    'Welcome, ' || uname || '! Welcome to Epick Chat - say hello and introduce yourself.'
+  );
+
   insert into public.room_members (room_id, user_id)
   select id, new.id from public.rooms
   where id = '00000000-0000-0000-0000-000000000001'
@@ -1464,6 +1471,27 @@ begin
 end;
 $$;
 grant execute on function public.room_regen_code(uuid) to authenticated;
+
+alter table public.rooms add column if not exists rules text not null default '';
+
+create or replace function public.room_set_rules(p_room uuid, p_rules text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not (public.is_staff() or public.is_room_owner(p_room)) then
+    raise exception 'Room owner only';
+  end if;
+
+  update public.rooms
+  set rules = left(coalesce(trim(p_rules), ''), 1000),
+      updated_at = now()
+  where id = p_room;
+end;
+$$;
+grant execute on function public.room_set_rules(uuid, text) to authenticated;
 
 alter table public.profiles drop constraint if exists profiles_bio_len;
 alter table public.profiles

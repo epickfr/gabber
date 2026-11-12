@@ -263,6 +263,7 @@
       uploading: false,
       replyTo: null,
       adminUsers: [],
+      newUsers: [],
       notifications: [],
       notifChannel: null,
       awayDigest: null,
@@ -272,6 +273,7 @@
       modCalls: [],
       lastSent: new Map(),
       view: 'chat',
+      pendingRulesRoom: null,
       adminTab: 'users',
       adminFilter: '',
       adminRoomFilter: '',
@@ -295,8 +297,6 @@
     registerDisplay: $id('register-display'),
     registerPassword: $id('register-password'),
     authError: $id('auth-error'),
-    appBody: $id('app-body'),
-    sidebarToggle: $id('sidebar-toggle'),
     sidebarMe: $id('sidebar-me'),
     roomTabsBar: $id('room-tabs-bar'),
     roomTabs: $id('room-tabs'),
@@ -308,6 +308,8 @@
     roomsPanelJoin: $id('rooms-panel-join'),
     friendsPanel: $id('friends-panel'),
     friendsPanelBody: $id('friends-panel-body'),
+    newUsersPanel: $id('newusers-panel'),
+    newUsersPanelBody: $id('newusers-panel-body'),
     dialogModal: $id('dialog-modal'),
     dialogTitle: $id('dialog-title'),
     dialogMessage: $id('dialog-message'),
@@ -336,6 +338,14 @@
     pinnedText: $id('pinned-text'),
     pinnedJump: $id('pinned-jump'),
     pinnedUnpin: $id('pinned-unpin'),
+    roomRules: $id('room-rules'),
+    roomRulesCount: $id('room-rules-count'),
+    rulesModal: $id('rules-modal'),
+    rulesRoom: $id('rules-modal-room'),
+    rulesText: $id('rules-modal-text'),
+    rulesDontShow: $id('rules-dont-show'),
+    rulesAccept: $id('rules-accept'),
+    rulesDecline: $id('rules-decline'),
     roomMuted: $id('room-muted'),
     roomMutedSection: $id('room-muted-section'),
     roomInviteSection: $id('room-invite-section'),
@@ -366,6 +376,7 @@
     statusUser: $id('status-user'),
     statusOnline: $id('status-online'),
     statusClock: $id('status-clock'),
+    statusUptime: $id('status-uptime'),
     logoutBtn: $id('logout-btn'),
     headerUser: $id('header-user'),
     editProfileBtn: $id('edit-profile-btn'),
@@ -1031,6 +1042,11 @@
 
     ui.pinnedJump.addEventListener('click', jumpToPinned);
     ui.pinnedUnpin.addEventListener('click', () => unpinMessage());
+    ui.rulesAccept.addEventListener('click', () => acceptRules());
+    ui.rulesDecline.addEventListener('click', () => declineRules());
+    ui.roomRules.addEventListener('input', () => {
+      ui.roomRulesCount.textContent = String(ui.roomRules.value.length);
+    });
 
     ui.adminBtn.addEventListener('click', openAdminPanel);
     ui.adminClose.addEventListener('click', closeAdminPanel);
@@ -1146,6 +1162,9 @@
       } else if (nav === 'friends') {
         showView('friends');
         setActiveNav('friends');
+      } else if (nav === 'new-users') {
+        showView('new-users');
+        setActiveNav('new-users');
       } else if (nav === 'new-room') {
         openNewRoomModal();
       } else if (nav === 'join-room') {
@@ -1234,18 +1253,6 @@
       if (action === 'call-mod') sendModcall();
     });
 
-    ui.sidebarToggle.addEventListener('click', () => {
-      ui.appBody.classList.toggle('sidebar-open');
-    });
-
-    ui.appBody.addEventListener('click', (event) => {
-      if (isMobile() && ui.appBody.classList.contains('sidebar-open')) {
-        if (!event.target.closest('.sidebar') && !event.target.closest('#sidebar-toggle')) {
-          ui.appBody.classList.remove('sidebar-open');
-        }
-      }
-    });
-
     window.addEventListener('beforeunload', () => {
       if (state.me) localStorage.setItem(awayKey(), new Date().toISOString());
       if (state.convChannel) sb.removeChannel(state.convChannel);
@@ -1262,11 +1269,22 @@
     if (room) openRoom(room);
   }
 
+  const RELEASE_DATE = new Date(2026, 10, 10, 19, 0, 0);
+
   function startClock() {
     const tick = () => {
       ui.statusClock.textContent = new Date().toLocaleTimeString([], {
         hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
       });
+
+      const elapsed = Date.now() - RELEASE_DATE.getTime();
+      const totalMinutes = Math.max(0, Math.floor(elapsed / 60000));
+      const days = Math.floor(totalMinutes / 1440);
+      const hours = Math.floor((totalMinutes % 1440) / 60);
+      const minutes = totalMinutes % 60;
+      ui.statusUptime.textContent = 'up ' + days + 'd ' +
+        String(hours).padStart(2, '0') + 'h ' +
+        String(minutes).padStart(2, '0') + 'm';
     };
     tick();
     setInterval(tick, 1000);
@@ -1569,9 +1587,7 @@
     if (state.notifChannel || !state.me) return;
 
     const channel = sb
-      .channel('epickchat-notif-' + state.me.id, {
-        config: { private: true }
-      })
+      .channel('epickchat-notif-' + state.me.id)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -1936,12 +1952,17 @@
     if (ui.chatPanel) ui.chatPanel.hidden = view !== 'chat';
     if (ui.roomsPanel) ui.roomsPanel.hidden = view !== 'rooms';
     if (ui.friendsPanel) ui.friendsPanel.hidden = view !== 'friends';
+    if (ui.newUsersPanel) ui.newUsersPanel.hidden = view !== 'new-users';
     if (view === 'rooms') renderRoomsPanel();
     if (view === 'friends') {
       renderFriendsPanel();
       markConversationSeen({ kind: 'friend' });
     }
+    if (view === 'new-users') loadNewUsers();
     setActiveNav(view);
+    document.querySelectorAll('.mobile-nav-item').forEach((item) => {
+      item.classList.toggle('active', item.dataset.nav === view);
+    });
   }
 
   function tabKey(type, id) {
@@ -2482,6 +2503,52 @@
     return state.current && state.current.type === 'room' ? state.current.room : null;
   }
 
+  function hasAcceptedRules(roomId) {
+    try {
+      return localStorage.getItem('epickchat:rules-ok:' + state.me.id + ':' + roomId) === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function hasUnacceptedRules(room) {
+    const rules = String((room && room.rules) || '').trim();
+    if (!rules) return false;
+    return !hasAcceptedRules(room.id);
+  }
+
+  function showRulesGate(room) {
+    state.pendingRulesRoom = room;
+    ui.rulesRoom.textContent = '# ' + room.name;
+    ui.rulesText.textContent = room.rules || '';
+    ui.rulesDontShow.checked = true;
+    ui.rulesModal.hidden = false;
+    requestAnimationFrame(() => ui.rulesAccept.focus());
+  }
+
+  async function acceptRules() {
+    const roomId = state.pendingRulesRoom && state.pendingRulesRoom.id;
+
+    if (ui.rulesDontShow.checked && state.me && roomId) {
+      try {
+        localStorage.setItem('epickchat:rules-ok:' + state.me.id + ':' + roomId, '1');
+      } catch (_) {
+        void 0;
+      }
+    }
+
+    ui.rulesModal.hidden = true;
+    const room = state.pendingRulesRoom;
+    state.pendingRulesRoom = null;
+    if (room) await openRoom(room);
+  }
+
+  function declineRules() {
+    ui.rulesModal.hidden = true;
+    state.pendingRulesRoom = null;
+    toast('You need to agree to the rules to enter this room.');
+  }
+
   function currentMember() {
     return state.members.find((person) => person.id === state.me.id) || null;
   }
@@ -2587,6 +2654,11 @@
   async function openRoom(room) {
     if (!room) return;
 
+    if (hasUnacceptedRules(room)) {
+      showRulesGate(room);
+      return;
+    }
+
     if (!room.is_private && !state.myRoomIds.has(room.id)) {
       const { error } = await sb.from('room_members').insert({
         room_id: room.id,
@@ -2634,7 +2706,6 @@
     renderHeader();
     applyRoomTalkState();
     focusComposer();
-    if (isMobile()) ui.appBody.classList.remove('sidebar-open');
   }
 
   async function openDM(friendId) {
@@ -2679,7 +2750,6 @@
     renderMembers();
     renderHeader();
     focusComposer();
-    if (isMobile()) ui.appBody.classList.remove('sidebar-open');
   }
 
   async function loadRoomMessages(roomId) {
@@ -2746,9 +2816,7 @@
     const table = current.type === 'room' ? 'messages' : 'dm_messages';
     const column = current.type === 'room' ? 'room_id' : 'thread_id';
     const channel = sb
-      .channel('epickchat-conv-' + current.type + '-' + current.id, {
-        config: { private: true }
-      })
+      .channel('epickchat-conv-' + current.type + '-' + current.id)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -3008,9 +3076,7 @@
     if (state.globalChannel) return;
 
     const channel = sb
-      .channel('epickchat-events', {
-        config: { private: true }
-      })
+      .channel('epickchat-events')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => {
         reloadFriendsSoon();
       })
@@ -3656,6 +3722,7 @@
       name: room.name,
       topic: room.topic || '',
       welcome: room.welcome || '',
+      rules: room.rules || '',
       icon_url: room.icon_url || '',
       accent: room.accent || '#000080',
       font: room.font || 'default',
@@ -3682,6 +3749,8 @@
     ui.roomName.value = draft.name;
     ui.roomTopic.value = draft.topic;
     ui.roomWelcome.value = draft.welcome;
+    ui.roomRules.value = draft.rules || '';
+    ui.roomRulesCount.textContent = String((draft.rules || '').length);
     ui.roomFont.value = draft.font;
     ui.roomMode.value = draft.post_mode;
     ui.roomSlowmode.value = String(draft.slowmode);
@@ -3871,6 +3940,7 @@
 
     const topic = ui.roomTopic.value.trim().slice(0, 200);
     const welcome = ui.roomWelcome.value.trim().slice(0, 200);
+    const rules = ui.roomRules.value.trim().slice(0, 1000);
     const font = ui.roomFont.value;
     const mode = ui.roomMode.value;
     const slow = Math.min(300, Math.max(0, parseInt(ui.roomSlowmode.value, 10) || 0));
@@ -3887,7 +3957,21 @@
       p_slowmode: slow,
       p_welcome: welcome
     });
-    ui.roomSave.disabled = false;
+
+    if (!error) {
+      const { error: rulesError } = await sb.rpc('room_set_rules', {
+        p_room: room.id,
+        p_rules: rules
+      });
+      ui.roomSave.disabled = false;
+
+      if (rulesError) {
+        toast(rulesError.message);
+        return;
+      }
+    } else {
+      ui.roomSave.disabled = false;
+    }
 
     if (error) {
       toast(error.message);
@@ -3902,7 +3986,8 @@
       font,
       post_mode: mode,
       slowmode: slow,
-      welcome
+      welcome,
+      rules
     });
 
     state.roomDraft = null;
@@ -4608,6 +4693,47 @@
       }));
 
       ui.adminUsers.append(row);
+    }
+  }
+
+  async function loadNewUsers() {
+    const { data, error } = await sb
+      .from('profiles')
+      .select('id, username, display_name, rank, color, avatar_url, banned, name_style, verified, created_at')
+      .order('created_at', { ascending: false })
+      .limit(25);
+
+    if (error) {
+      toast(error.message);
+      return;
+    }
+    state.newUsers = data || [];
+    renderNewUsersPanel();
+  }
+
+  function renderNewUsersPanel() {
+    if (!ui.newUsersPanelBody) return;
+    ui.newUsersPanelBody.replaceChildren();
+
+    const list = state.newUsers || [];
+    if (!list.length) {
+      ui.newUsersPanelBody.append(h('div', { class: 'empty', text: 'no signups yet. be the first!' }));
+      return;
+    }
+
+    for (const person of list) {
+      const joined = person.created_at
+        ? new Date(person.created_at).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })
+        : 'unknown';
+
+      ui.newUsersPanelBody.append(h('div', { class: 'directory-row' },
+        avatarNode(person, 'tiny'),
+        h('span', { class: 'grow' },
+          h('span', { class: styledNameClass('', person) }, person.username, verifyBadge(person)),
+          person.banned ? h('span', { class: 'ban-mark', text: 'banned' }) : null
+        ),
+        h('span', { class: 'muted', text: 'joined ' + joined })
+      ));
     }
   }
 
