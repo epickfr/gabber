@@ -1127,14 +1127,20 @@ select.rank-select { width: auto; }
   font-size: 9.5px;
 }
 
+.profile-head-text { overflow: hidden; min-width: 0; }
+.profile-view-head-text { overflow: hidden; min-width: 0; }
+
 .profile-view-bio {
   padding: 8px 10px;
   background: #ffffff;
   min-height: 56px;
   font-size: 10.5px;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  word-break: normal;
+  width: 100%;
 }
 
 .profile-view-actions {

@@ -180,6 +180,12 @@
     return 'background-image:url("' + safe + '")';
   }
 
+  const DEFAULT_BANNER = 'banners/bliss.png';
+
+  function bannerStyleWithDefault(url) {
+    return bannerStyle(url) || bannerStyle(DEFAULT_BANNER);
+  }
+
   function gradientStyle(person) {
     const from = person && person.grad_from;
     const to = person && person.grad_to;
@@ -1863,7 +1869,7 @@
     const opts = options || {};
     const grad = gradientStyle(person);
     const card = h('div', { class: 'profile-card' },
-      h('div', { class: 'profile-banner', style: bannerStyle(person.banner_url) }),
+      h('div', { class: 'profile-banner', style: bannerStyleWithDefault(person.banner_url) }),
       h('div', { class: 'profile-head' + (grad ? ' has-grad' : ''), style: grad },
         avatarNode(person, 'big'),
         h('div', { class: 'profile-head-text' },
@@ -1922,7 +1928,7 @@
       ? 'joined ' + new Date(person.created_at).toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' })
       : '';
 
-    const banner = h('div', { class: 'profile-view-banner', style: bannerStyle(person.banner_url) });
+    const banner = h('div', { class: 'profile-view-banner', style: bannerStyleWithDefault(person.banner_url) });
 
     const head = h('div', { class: 'profile-view-head' + (grad ? ' has-grad' : ''), style: grad },
       avatarNode(person, 'big'),
@@ -2030,7 +2036,7 @@
     );
 
     ui.myCard.replaceChildren(
-      h('div', { class: 'profile-banner', style: bannerStyle(person.banner_url) }),
+      h('div', { class: 'profile-banner', style: bannerStyleWithDefault(person.banner_url) }),
       h('div', { class: 'profile-head' + (grad ? ' has-grad' : ''), style: grad },
         avatarNode(person, 'big'),
         h('div', { class: 'profile-head-text' },
