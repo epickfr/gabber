@@ -128,6 +128,12 @@
     return /^#[0-9a-f]{6}$/i.test(value) ? value : '#000000';
   };
 
+  const nickName = (person) => {
+    if (!person) return 'unknown';
+    const display = String(person.display_name || '').trim();
+    return display || person.username || 'unknown';
+  };
+
   const initial = (name) => (name || '?').slice(0, 1).toUpperCase();
 
   const IMAGE_URL_RE = /(https?:\/\/[^\s<>"']+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\?[^\s<>"']*)?)/i;
@@ -261,6 +267,7 @@
       toastTimer: null,
       editor: null,
       viewingProfile: null,
+      profileTarget: null,
       uploading: false,
       replyTo: null,
       adminUsers: [],
@@ -275,6 +282,7 @@
       lastSent: new Map(),
       view: 'chat',
       pendingRulesRoom: null,
+      lastPing: 0,
       adminTab: 'users',
       adminFilter: '',
       adminRoomFilter: '',
@@ -339,6 +347,10 @@
     pinnedText: $id('pinned-text'),
     pinnedJump: $id('pinned-jump'),
     pinnedUnpin: $id('pinned-unpin'),
+    profileViewModal: $id('profile-view-modal'),
+    profileViewClose: $id('profile-view-close'),
+    profileViewBody: $id('profile-view-body'),
+    profileViewFoot: $id('profile-view-foot'),
     roomRules: $id('room-rules'),
     roomRulesCount: $id('room-rules-count'),
     rulesModal: $id('rules-modal'),
@@ -475,6 +487,60 @@
     if (/username is already taken/i.test(message)) return 'That username is already taken.';
     if (/rate limit/i.test(message)) return 'Too many attempts. Wait a minute and try again.';
     return message;
+  }
+
+  const chimeCtxRef = { current: null };
+  const notificationAudio = { current: null };
+
+  function chimeSound() {
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+
+      chimeCtxRef.current = chimeCtxRef.current || new AudioContextClass();
+      const ctx = chimeCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const now = ctx.currentTime;
+      const notes = [659.25, 987.77];
+
+      notes.forEach((freq, index) => {
+        const oscillator = ctx.createOscillator();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = freq;
+
+        const gain = ctx.createGain();
+        const start = now + index * 0.16;
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.linearRampToValueAtTime(0.28, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.25);
+
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+        oscillator.start(start);
+        oscillator.stop(start + 0.3);
+      });
+    } catch (_) {
+      chimeCtxRef.current = null;
+    }
+  }
+
+  function playNotificationSound() {
+    const now = Date.now();
+    if (state.lastPing && now - state.lastPing < 500) return;
+    state.lastPing = now;
+
+    try {
+      if (!notificationAudio.current) notificationAudio.current = new Audio('NOTIFICATION.mp3');
+      notificationAudio.current.currentTime = 0;
+
+      const attempt = notificationAudio.current.play();
+      if (attempt && typeof attempt.catch === 'function') {
+        attempt.catch(() => chimeSound());
+      }
+    } catch (_) {
+      chimeSound();
+    }
   }
 
   function setBusy(form, busy) {
@@ -1012,16 +1078,8 @@
     });
 
     ui.memberList.addEventListener('click', (event) => {
-      if (event.target.closest('[data-action="close-profile"]')) {
-        state.viewingProfile = null;
-        renderMembers();
-        return;
-      }
       const member = event.target.closest('[data-member-id]');
-      if (member) {
-        state.viewingProfile = member.dataset.memberId;
-        renderMembers();
-      }
+      if (member) openProfile(member.dataset.memberId);
     });
 
     ui.replyCancel.addEventListener('click', cancelReply);
@@ -1043,6 +1101,24 @@
 
     ui.pinnedJump.addEventListener('click', jumpToPinned);
     ui.pinnedUnpin.addEventListener('click', () => unpinMessage());
+
+    ui.profileViewClose.addEventListener('click', closeProfileView);
+    ui.profileViewModal.addEventListener('click', (event) => {
+      if (event.target === ui.profileViewModal) closeProfileView();
+    });
+    ui.profileViewFoot.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-profile-action]');
+      if (!button || !state.profileTarget) return;
+      handleProfileAction(button.dataset.profileAction, state.profileTarget);
+    });
+
+    document.addEventListener('click', (event) => {
+      const target = event.target.closest('[data-open-profile]');
+      if (!target) return;
+      if (event.target.closest('button, a, select, input, textarea')) return;
+      event.preventDefault();
+      openProfile(target.dataset.openProfile);
+    });
     ui.rulesAccept.addEventListener('click', () => acceptRules());
     ui.rulesDecline.addEventListener('click', () => declineRules());
     ui.roomRules.addEventListener('input', () => {
@@ -1238,8 +1314,15 @@
     }
 
     ui.friends.addEventListener('click', (event) => {
-      const button = event.target.closest('[data-friend-id]');
-      if (button) openDM(button.dataset.friendId);
+      const dm = event.target.closest('[data-open-dm]');
+      if (dm) {
+        event.preventDefault();
+        event.stopPropagation();
+        openDM(dm.dataset.openDm);
+        return;
+      }
+      const row = event.target.closest('[data-open-profile]');
+      if (row) openProfile(row.dataset.openProfile);
     });
 
     ui.channelActions.addEventListener('click', (event) => {
@@ -1609,6 +1692,8 @@
         );
         if (viewing) markConversationSeen({ id: item.id });
 
+        if (item.kind !== 'away') playNotificationSound();
+
         if (item.kind === 'mention' || item.kind === 'dm' || item.kind === 'modcall') {
           desktopAlert(item.body, {
             tag: 'notif-' + item.id,
@@ -1705,7 +1790,7 @@
       else state.outgoing.push(entry);
     }
 
-    state.friends.sort((a, b) => a.person.username.localeCompare(b.person.username));
+    state.friends.sort((a, b) => nickName(a.person).localeCompare(nickName(b.person)));
   }
 
   async function loadRooms() {
@@ -1782,7 +1867,7 @@
       h('div', { class: 'profile-head' + (grad ? ' has-grad' : ''), style: grad },
         avatarNode(person, 'big'),
         h('div', { class: 'profile-head-text' },
-          h('div', { class: styledNameClass('profile-name', person) }, person.username, verifyBadge(person), rankBadge(person)),
+          h('div', { class: styledNameClass('profile-name', person), 'data-open-profile': person.id }, nickName(person), verifyBadge(person), rankBadge(person)),
           h('div', { class: 'profile-sub', text: person.display_name || '' }),
           h('div', {
             class: 'presence ' + (online ? 'on' : 'off'),
@@ -1805,6 +1890,126 @@
     return card;
   }
 
+  async function openProfile(id) {
+    const personId = String(id || '');
+    if (!personId) return;
+
+    let person = state.people.get(personId);
+    if (!person) {
+      const { data, error } = await sb.from('profiles').select('*').eq('id', personId).maybeSingle();
+      if (error || !data) { toast('Could not load that profile.'); return; }
+      state.people.set(data.id, data);
+      person = data;
+    }
+
+    state.profileTarget = person;
+    renderProfileView();
+    ui.profileViewModal.hidden = false;
+  }
+
+  function closeProfileView() {
+    ui.profileViewModal.hidden = true;
+  }
+
+  function renderProfileView() {
+    const person = state.profileTarget;
+    if (!person) return;
+
+    const me = state.profile;
+    const online = state.online.has(person.id);
+    const grad = gradientStyle(person);
+    const joined = person.created_at
+      ? 'joined ' + new Date(person.created_at).toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' })
+      : '';
+
+    const banner = h('div', { class: 'profile-view-banner', style: bannerStyle(person.banner_url) });
+
+    const head = h('div', { class: 'profile-view-head' + (grad ? ' has-grad' : ''), style: grad },
+      avatarNode(person, 'big'),
+      h('div', { class: 'profile-view-head-text' },
+        h('div', { class: styledNameClass('profile-view-name', person) }, nickName(person), verifyBadge(person), rankBadge(person)),
+        h('div', { class: 'profile-view-handle', text: '@' + person.username }),
+        h('div', { class: 'profile-view-presence ' + (online ? 'on' : 'off'), text: online ? '* online now *' : 'offline' })
+      )
+    );
+
+    const meta = h('div', { class: 'profile-view-meta', text: joined });
+    const bio = h('div', { class: 'profile-view-bio' }, linkify(person.bio || 'no bio yet.'));
+
+    ui.profileViewBody.replaceChildren(banner, head, meta, bio);
+
+    const foot = ui.profileViewFoot;
+    foot.replaceChildren();
+    const add = (label, action, cls) => foot.append(h('button', {
+      type: 'button',
+      class: 'btn tiny' + (cls ? ' ' + cls : ''),
+      'data-profile-action': action,
+      text: label
+    }));
+
+    if (me && me.id === person.id) {
+      add('edit profile', 'edit', 'primary');
+      return;
+    }
+
+    const room = currentRoom();
+    const canModerate = room && canModerateRoom(room);
+    const isStaffUser = isStaff();
+    const isFriend = state.friends.some((entry) => entry.person.id === person.id);
+    const pending = state.incoming.some((entry) => entry.person.id === person.id)
+      || state.outgoing.some((entry) => entry.person.id === person.id);
+
+    add('message', 'message', 'primary');
+
+    if (isFriend) add('friend', 'pending-friend');
+    else if (pending) add('request pending', 'pending-friend');
+    else add('add friend', 'add-friend');
+
+    if (canModerate) {
+      const member = state.members.find((entry) => entry.id === person.id);
+      add(member && member.muted ? 'unmute' : 'mute', 'mute');
+      add('kick', 'kick', 'danger');
+    }
+
+    if (isStaffUser) {
+      add(person.verified ? 'unverify' : 'verify', 'verify');
+      add(person.banned ? 'unban' : 'ban', 'ban', 'danger');
+    }
+  }
+
+  async function refreshProfileView() {
+    const person = state.profileTarget;
+    if (!person) return;
+
+    const { data, error } = await sb.from('profiles').select('*').eq('id', person.id).maybeSingle();
+    if (error || !data) return;
+    state.people.set(data.id, data);
+    state.profileTarget = data;
+    renderProfileView();
+  }
+
+  async function handleProfileAction(action, person) {
+    if (action === 'edit') { closeProfileView(); openProfileEditor(); return; }
+    if (action === 'message') { closeProfileView(); await openDM(person.id); return; }
+    if (action === 'add-friend') { await addFriend(person.id); refreshProfileView(); return; }
+    if (action === 'pending-friend') return;
+    if (action === 'verify') { await toggleVerified(person); refreshProfileView(); return; }
+    if (action === 'ban') {
+      const fn = person.banned ? unbanUser : banUser;
+      await fn(person.username);
+      refreshProfileView();
+      return;
+    }
+    if (action === 'mute') {
+      const member = state.members.find((entry) => entry.id === person.id);
+      const muted = member ? Boolean(member.muted) : false;
+      await toggleRoomMute(person.id, !muted);
+      refreshProfileView();
+      return;
+    }
+    if (action === 'kick') { await kickRoomMember(person.id); refreshProfileView(); }
+  }
+
   function renderMe() {
     if (!state.profile) {
       ui.sidebarMe.replaceChildren();
@@ -1818,7 +2023,7 @@
     ui.sidebarMe.replaceChildren(
       avatarNode(person, 'small'),
       h('span', { class: 'me-text' },
-        h('strong', { class: styledNameClass('side-name', person) }, person.username, verifyBadge(person), rankBadge(person)),
+        h('strong', { class: styledNameClass('side-name', person), 'data-open-profile': person.id, title: 'view your profile' }, nickName(person), verifyBadge(person), rankBadge(person)),
         h('br'),
         h('small', { text: person.display_name || 'online now' })
       )
@@ -1829,7 +2034,7 @@
       h('div', { class: 'profile-head' + (grad ? ' has-grad' : ''), style: grad },
         avatarNode(person, 'big'),
         h('div', { class: 'profile-head-text' },
-          h('div', { class: styledNameClass('profile-name', person) }, person.username, verifyBadge(person), rankBadge(person)),
+          h('div', { class: styledNameClass('profile-name', person), 'data-open-profile': person.id }, nickName(person), verifyBadge(person), rankBadge(person)),
           h('div', { class: 'profile-sub', text: person.display_name || '' })
         )
       ),
@@ -1901,15 +2106,16 @@
       const active = state.current && state.current.type === 'dm' && state.current.person.id === person.id;
       const unread = state.unread.get('friend:' + person.id) || 0;
 
-      ui.friends.append(h('button', {
-        type: 'button',
-        class: 'side-item' + (active ? ' active' : ''),
+      ui.friends.append(h('div', {
+        class: 'side-item friend-dm-item' + (active ? ' active' : ''),
+        'data-open-profile': person.id,
         'data-friend-id': person.id,
-        title: person.display_name || person.username
+        title: nickName(person) + "'s profile"
       },
         h('span', { class: 'dot' + (online ? ' on' : '') }),
-        h('span', { class: styledNameClass('label', person) }, person.username, verifyBadge(person)),
-        unread ? h('span', { class: 'badge', text: String(unread) }) : null
+        h('span', { class: styledNameClass('label', person) }, nickName(person), verifyBadge(person)),
+        unread ? h('span', { class: 'badge', text: String(unread) }) : null,
+        h('button', { type: 'button', class: 'btn micro', 'data-open-dm': person.id, text: 'dm' })
       ));
     }
 
@@ -1924,8 +2130,8 @@
         h('div', { class: 'muted', text: 'friend requests' })
       );
       for (const { link, person } of state.incoming) {
-        box.append(h('div', { class: 'request' },
-          h('span', { class: styledNameClass('label', person) }, person.username + ' ', verifyBadge(person)),
+        box.append(h('div', { class: 'request', 'data-open-profile': person.id, title: nickName(person) + "'s profile" },
+          h('span', { class: styledNameClass('label', person) }, nickName(person) + ' ', verifyBadge(person)),
           h('span', { class: 'request-actions' },
             h('button', { type: 'button', class: 'btn micro', 'data-accept': link.id, text: 'ok' }),
             h('button', { type: 'button', class: 'btn micro', 'data-decline': link.id, text: 'no' })
@@ -1936,7 +2142,7 @@
     }
 
     if (state.outgoing.length) {
-      const names = state.outgoing.map((entry) => entry.person.username).join(', ');
+      const names = state.outgoing.map((entry) => nickName(entry.person)).join(', ');
       ui.friendRequests.append(h('div', { class: 'outgoing', text: 'waiting on: ' + names }));
     }
   }
@@ -2138,8 +2344,8 @@
         h('div', { class: 'muted', text: 'friend requests' })
       );
       for (const { link, person } of state.incoming) {
-        box.append(h('div', { class: 'request' },
-          h('span', { class: styledNameClass('label', person) }, person.username + ' ', verifyBadge(person)),
+        box.append(h('div', { class: 'request', 'data-open-profile': person.id, title: nickName(person) + "'s profile" },
+          h('span', { class: styledNameClass('label', person) }, nickName(person) + ' ', verifyBadge(person)),
           h('span', { class: 'request-actions' },
             h('button', { type: 'button', class: 'btn micro', 'data-accept': link.id, text: 'ok' }),
             h('button', { type: 'button', class: 'btn micro', 'data-decline': link.id, text: 'no' })
@@ -2156,9 +2362,9 @@
 
     for (const { person } of state.friends) {
       const online = state.online.has(person.id);
-      ui.friendsPanelBody.append(h('div', { class: 'directory-row' },
+      ui.friendsPanelBody.append(h('div', { class: 'directory-row', 'data-open-profile': person.id, title: nickName(person) + "'s profile" },
         h('span', { class: 'dot' + (online ? ' on' : '') }),
-        h('span', { class: styledNameClass('grow', person) }, person.username, verifyBadge(person), rankBadge(person)),
+        h('span', { class: styledNameClass('grow', person) }, nickName(person), verifyBadge(person), rankBadge(person)),
         h('button', {
           type: 'button',
           class: 'btn tiny',
@@ -2227,7 +2433,7 @@
       }
     } else {
       const person = current.person;
-      ui.channelName.textContent = '@ ' + person.username;
+      ui.channelName.textContent = '@ ' + nickName(person);
       ui.channelTopic.textContent = state.online.has(person.id) ? 'online now' : 'offline';
       ui.channelActions.append(
         h('button', { type: 'button', class: 'btn micro danger', 'data-action': 'unfriend', text: 'remove friend' })
@@ -2251,7 +2457,8 @@
       h('span', {
         class: styledNameClass('nick', isSystem ? null : person),
         style: 'color:' + safeColor(person.color),
-        text: '<' + person.username + '> '
+        text: '<' + nickName(person) + '> ',
+        'data-open-profile': isSystem ? null : (person.id || '')
       }),
       isSystem ? null : verifyBadge(person),
       isSystem ? null : rankBadge(person),
@@ -2297,8 +2504,12 @@
       }
     }
 
+    const avatar = isSystem
+      ? avatarNode(person, 'msg-avatar')
+      : h('span', { class: 'msg-avatar-hit', 'data-open-profile': person.id || '' }, avatarNode(person, 'msg-avatar'));
+
     return h('div', { class: 'msg' + (mine ? ' mine' : '') + (isSystem ? ' system' : ''), 'data-msg-id': message.id },
-      avatarNode(person, 'msg-avatar'),
+      avatar,
       h('div', { class: 'msg-main' },
         quote,
         line,
@@ -2453,42 +2664,24 @@
       return;
     }
 
-    if (state.viewingProfile) {
-      const person = state.people.get(state.viewingProfile);
-      if (person) {
-        ui.userlistTitle.textContent = 'PROFILE';
-        ui.memberList.append(
-          h('button', {
-            type: 'button',
-            class: 'btn tiny',
-            'data-action': 'close-profile',
-            text: 'back to room'
-          }),
-          profileCardNode(person, state.online.has(person.id))
-        );
-        return;
-      }
-      state.viewingProfile = null;
-    }
-
     ui.userlistTitle.textContent = 'IN THIS ROOM (' + state.members.length + ')';
 
     const sorted = [...state.members].sort((a, b) => {
       const aOnline = state.online.has(a.id) ? 0 : 1;
       const bOnline = state.online.has(b.id) ? 0 : 1;
       if (aOnline !== bOnline) return aOnline - bOnline;
-      return a.username.localeCompare(b.username);
+      return nickName(a).localeCompare(nickName(b));
     });
 
     for (const person of sorted) {
       ui.memberList.append(h('div', {
         class: 'member',
         'data-member-id': person.id,
-        title: 'view ' + person.username + "'s profile"
+        title: 'view ' + nickName(person) + "'s profile"
       },
         h('span', { class: 'dot' + (state.online.has(person.id) ? ' on' : '') }),
         avatarNode(person, 'tiny'),
-        h('span', { class: styledNameClass('label', person), style: 'color:' + safeColor(person.color) }, person.username, verifyBadge(person), rankBadge(person))
+        h('span', { class: styledNameClass('label', person), style: 'color:' + safeColor(person.color) }, nickName(person), verifyBadge(person), rankBadge(person))
       ));
     }
 
@@ -2722,7 +2915,7 @@
     state.threadToFriend.set(threadId, friendId);
     unsubscribeConversation();
     state.current = { type: 'dm', id: threadId, person };
-    addTab('dm', friendId, person.username);
+    addTab('dm', friendId, nickName(person));
     showView('chat');
     state.messages = [];
     state.members = [];
@@ -2902,7 +3095,7 @@
 
     if (state.replyTo) {
       payload.reply_to = state.replyTo.id;
-      payload.reply_snippet = (state.replyTo.person ? state.replyTo.person.username : 'unknown') +
+      payload.reply_snippet = (state.replyTo.person ? nickName(state.replyTo.person) : 'unknown') +
         ': ' + String(state.replyTo.body || '').slice(0, 90);
     }
 
@@ -3148,8 +3341,8 @@
 
     for (const person of state.searchResults) {
       const status = related.get(person.id);
-      ui.friendResults.append(h('div', { class: 'request' },
-        h('span', { class: styledNameClass('label', person) }, person.username + ' ', verifyBadge(person)),
+      ui.friendResults.append(h('div', { class: 'request', 'data-open-profile': person.id, title: nickName(person) + "'s profile" },
+        h('span', { class: styledNameClass('label', person) }, nickName(person) + ' ', verifyBadge(person)),
         status === 'friend'
           ? h('span', { class: 'muted', text: '(friend)' })
           : status === 'pending'
@@ -3375,7 +3568,7 @@
     const entry = state.friends.find((item) => item.person.id === current.person.id);
     if (!entry) return;
 
-    if (!await confirmBox('Remove ' + current.person.username + ' from your friends?', { title: 'REMOVE FRIEND', confirmText: 'remove', danger: true })) return;
+    if (!await confirmBox('Remove ' + nickName(current.person) + ' from your friends?', { title: 'REMOVE FRIEND', confirmText: 'remove', danger: true })) return;
 
     const { error } = await sb.from('friendships').delete().eq('id', entry.link.id);
     if (error) {
@@ -3813,10 +4006,7 @@
       const isOwner = person.id === room.owner;
       const isMe = person.id === state.me.id;
       const role = isOwner ? 'owner' : (person.room_role || 'member');
-      const row = h('div', { class: 'admin-user' },
-        avatarNode(person, 'tiny'),
-        h('span', { class: styledNameClass('admin-name', person) }, person.username, verifyBadge(person)),
-        h('span', { class: 'room-role', text: role }),
+      const row = h('div', { class: 'admin-user', 'data-open-profile': person.id, title: nickName(person) + "'s profile" },
         person.muted ? h('span', { class: 'ban-mark', text: 'muted' }) : null
       );
 
@@ -3872,9 +4062,9 @@
     ui.roomMutedSection.hidden = muted.length === 0;
 
     for (const person of muted) {
-      ui.roomMuted.append(h('div', { class: 'admin-user' },
+      ui.roomMuted.append(h('div', { class: 'admin-user', 'data-open-profile': person.id, title: nickName(person) + "'s profile" },
         avatarNode(person, 'tiny'),
-        h('span', { class: styledNameClass('admin-name', person) }, person.username, verifyBadge(person)),
+        h('span', { class: styledNameClass('admin-name', person) }, nickName(person), verifyBadge(person)),
         h('button', {
           type: 'button',
           class: 'btn micro',
@@ -3930,7 +4120,7 @@
     for (const message of state.messages) {
       const time = new Date(message.created_at).toISOString().replace('T', ' ').slice(0, 19);
       const person = message.person;
-      const name = person ? person.username : 'system';
+      const name = person ? nickName(person) : 'system';
       lines.push('[' + time + '] <' + name + '> ' + message.body);
     }
 
@@ -4023,7 +4213,7 @@
     const room = currentRoom();
     if (!room) return;
     const person = state.members.find((entry) => entry.id === userId);
-    if (!await confirmBox('Remove ' + (person ? person.username : 'this user') + ' from #' + room.name + '?', { title: 'KICK MEMBER', confirmText: 'kick', danger: true })) return;
+    if (!await confirmBox('Remove ' + (person ? nickName(person) : 'this user') + ' from #' + room.name + '?', { title: 'KICK MEMBER', confirmText: 'kick', danger: true })) return;
 
     const { error } = await sb.rpc('room_kick', { p_room: room.id, p_user: userId });
     if (error) {
@@ -4113,7 +4303,7 @@
 
     const { data, error } = await sb
       .from('mod_calls')
-      .select('id, room_id, user_id, body, status, created_at, user:profiles!mod_calls_user_id_fkey(username)')
+      .select('id, room_id, user_id, body, status, created_at, user:profiles!mod_calls_user_id_fkey(username, display_name, rank, avatar_url, name_style, verified)')
       .eq('status', 'open')
       .order('created_at', { ascending: true })
       .limit(50);
@@ -4137,7 +4327,7 @@
 
     for (const call of state.modCalls) {
       const room = state.rooms.find((entry) => entry.id === call.room_id);
-      const who = call.user ? call.user.username : 'someone';
+      const who = call.user ? nickName(call.user) : 'someone';
       ui.adminModcalls.append(h('div', { class: 'admin-room' },
         h('span', { class: 'admin-name', text: who }),
         h('span', { class: 'muted tiny-pad', text: '#' + (room ? room.name : 'room') + ' - ' + call.body }),
@@ -4187,7 +4377,7 @@
       return;
     }
     const person = state.replyTo.person;
-    const who = person ? person.username : 'unknown';
+    const who = person ? nickName(person) : 'unknown';
     ui.replyText.textContent = 'replying to ' + who + ': ' + String(state.replyTo.body || '').slice(0, 80);
     ui.replyBar.hidden = false;
   }
@@ -4487,7 +4677,7 @@
 
     if (name === 'users') {
       if (!room) { toast('Open a room first.'); return true; }
-      const names = state.members.map((person) => person.username).sort();
+      const names = state.members.map((person) => nickName(person)).sort();
       toast(names.length ? names.join(', ') : 'nobody here.');
       return true;
     }
@@ -4500,8 +4690,8 @@
         .maybeSingle();
       if (error) { toast(error.message); return true; }
       if (!person) { toast('No such user.'); return true; }
-      toast(person.username + ' (' + person.rank + ') - ' +
-        (person.display_name || 'no display name') +
+      toast(nickName(person) + ' (' + person.rank + ') - ' +
+        (person.display_name && person.display_name.trim() ? '@' + person.username : 'no display name') +
         (person.banned ? ' [banned]' : '') +
         ' - joined ' + new Date(person.created_at).toLocaleDateString());
       return true;
@@ -4680,9 +4870,9 @@
       }
       select.disabled = !allowed || person.id === state.me.id;
 
-      const row = h('div', { class: 'admin-user' },
+      const row = h('div', { class: 'admin-user', 'data-open-profile': person.id, title: nickName(person) + "'s profile" },
         avatarNode(person, 'tiny'),
-        h('span', { class: styledNameClass('admin-name', person) }, person.username, verifyBadge(person)),
+        h('span', { class: styledNameClass('admin-name', person) }, nickName(person), verifyBadge(person)),
         rankBadge(person),
         person.banned ? h('span', { class: 'ban-mark', text: 'banned' }) : null,
         select
@@ -4745,10 +4935,10 @@
         ? new Date(person.created_at).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })
         : 'unknown';
 
-      ui.newUsersPanelBody.append(h('div', { class: 'directory-row' },
+      ui.newUsersPanelBody.append(h('div', { class: 'directory-row', 'data-open-profile': person.id, title: nickName(person) + "'s profile" },
         avatarNode(person, 'tiny'),
         h('span', { class: 'grow' },
-          h('span', { class: styledNameClass('', person) }, person.username, verifyBadge(person)),
+          h('span', { class: styledNameClass('', person) }, nickName(person), verifyBadge(person)),
           person.banned ? h('span', { class: 'ban-mark', text: 'banned' }) : null
         ),
         h('span', { class: 'muted', text: 'joined ' + joined })
