@@ -500,6 +500,16 @@
         <span class="hint">seconds between messages, 0 = off</span>
       </div>
 
+      <div class="admin-section" id="room-invite-section" hidden>
+        <div class="admin-title">INVITE CODE</div>
+        <div class="invite-line">
+          <tt id="room-invite-code" class="invite-code">-</tt>
+          <button type="button" id="room-invite-copy" class="btn micro">copy</button>
+          <button type="button" id="room-invite-regen" class="btn micro danger">regenerate</button>
+        </div>
+        <div class="hint">Private rooms need this code to join. Regenerating invalidates the old one immediately.</div>
+      </div>
+
       <div class="admin-section">
         <div class="admin-title">MEMBERS</div>
         <div id="room-members" class="admin-list"></div>
@@ -513,6 +523,7 @@
     </div>
 
     <div class="modal-foot">
+      <button type="button" id="room-export" class="btn">export log</button>
       <button type="button" id="room-save" class="btn primary">save settings</button>
       <button type="button" id="room-cancel" class="btn">cancel</button>
     </div>

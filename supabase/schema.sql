@@ -1441,6 +1441,30 @@ end;
 $$;
 grant execute on function public.global_slowmode(integer) to authenticated;
 
+create or replace function public.room_regen_code(p_room uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  code text;
+begin
+  if not (public.is_staff() or public.is_room_owner(p_room)) then
+    raise exception 'Room owner only';
+  end if;
+
+  code := lower(substr(md5(random()::text || clock_timestamp()::text), 1, 16));
+  update public.rooms
+  set invite_code = code,
+      updated_at = now()
+  where id = p_room;
+
+  return code;
+end;
+$$;
+grant execute on function public.room_regen_code(uuid) to authenticated;
+
 alter table public.profiles drop constraint if exists profiles_bio_len;
 alter table public.profiles
   add constraint profiles_bio_len check (char_length(coalesce(bio, '')) <= 500) not valid;

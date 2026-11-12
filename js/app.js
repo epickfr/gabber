@@ -338,6 +338,11 @@
     pinnedUnpin: $id('pinned-unpin'),
     roomMuted: $id('room-muted'),
     roomMutedSection: $id('room-muted-section'),
+    roomInviteSection: $id('room-invite-section'),
+    roomInviteCode: $id('room-invite-code'),
+    roomInviteCopy: $id('room-invite-copy'),
+    roomInviteRegen: $id('room-invite-regen'),
+    roomExport: $id('room-export'),
     myRooms: $id('my-rooms'),
     publicRooms: $id('public-rooms'),
     friendCount: $id('friend-count'),
@@ -942,6 +947,12 @@
     ui.roomClose.addEventListener('click', closeRoomSettings);
     ui.roomCancel.addEventListener('click', closeRoomSettings);
     ui.roomSave.addEventListener('click', saveRoomSettings);
+    ui.roomExport.addEventListener('click', exportRoomLog);
+    ui.roomInviteCopy.addEventListener('click', () => {
+      const code = ui.roomInviteCode.textContent;
+      if (code && code !== 'no code set') copyText(code);
+    });
+    ui.roomInviteRegen.addEventListener('click', regenRoomCode);
     ui.roomModal.addEventListener('click', (event) => {
       if (event.target === ui.roomModal) closeRoomSettings();
     });
@@ -3680,6 +3691,12 @@
       : '');
     ui.roomIconPreview.textContent = draft.icon_url ? '' : 'no photo';
 
+    const room = currentRoom();
+    ui.roomInviteSection.hidden = !room || !room.is_private;
+    if (room && room.is_private) {
+      ui.roomInviteCode.textContent = room.invite_code || 'no code set';
+    }
+
     ui.roomAccents.replaceChildren(...ROOM_ACCENTS.map((color) => h('button', {
       type: 'button',
       class: 'swatch' + (color === draft.accent ? ' active' : ''),
@@ -3779,6 +3796,66 @@
         })
       ));
     }
+  }
+
+  async function regenRoomCode() {
+    const room = currentRoom();
+    if (!room || !room.is_private) return;
+    if (!canModerateRoom(room)) {
+      toast('Room owner only.');
+      return;
+    }
+
+    const ok = await confirmBox('Regenerate the invite code? Old codes stop working immediately.', {
+      title: 'REGENERATE CODE',
+      confirmText: 'regenerate',
+      danger: true
+    });
+    if (!ok) return;
+
+    const { data, error } = await sb.rpc('room_regen_code', { p_room: room.id });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+
+    room.invite_code = data;
+    ui.roomInviteCode.textContent = data;
+    copyText(data);
+    toast('New invite code generated and copied.');
+  }
+
+  function exportRoomLog() {
+    const current = state.current;
+    if (!current || current.type !== 'room') {
+      toast('Open a room first.');
+      return;
+    }
+
+    const room = current.room;
+    const lines = [];
+    lines.push('Epick Chat log: #' + room.name);
+    lines.push('topic: ' + (room.topic || 'no topic'));
+    lines.push('exported: ' + new Date().toISOString());
+    lines.push('');
+
+    for (const message of state.messages) {
+      const time = new Date(message.created_at).toISOString().replace('T', ' ').slice(0, 19);
+      const person = message.person;
+      const name = person ? person.username : 'system';
+      lines.push('[' + time + '] <' + name + '> ' + message.body);
+    }
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'epick-' + room.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-log.txt';
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    toast('Room log exported.');
   }
 
   async function saveRoomSettings() {

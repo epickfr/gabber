@@ -462,6 +462,22 @@ select.rank-select { width: auto; }
 
 .find-row { display: table; width: 100%; border-spacing: 3px 0; }
 
+.invite-line {
+  display: table;
+  width: 100%;
+  border-spacing: 5px 0;
+  margin: 2px 0 4px;
+}
+.invite-line > * { display: table-cell; vertical-align: middle; }
+.invite-line .invite-code {
+  width: 100%;
+  padding: 2px 5px;
+  background: #ffffcc;
+  border: 1px solid #d8c96a;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
 .requests {
   margin: 4px 0;
   padding: 4px 5px;
@@ -526,10 +542,9 @@ select.rank-select { width: auto; }
 }
 
 .msg {
-  display: table;
-  table-layout: fixed;
+  display: flex;
   width: 100%;
-  border-spacing: 0;
+  align-items: flex-start;
   padding: 3px 2px;
   border-bottom: 1px dotted #e2e9f1;
 }
@@ -538,13 +553,11 @@ select.rank-select { width: auto; }
 .msg.system { background: #fff4f4; }
 
 .msg-avatar {
-  display: table-cell;
-  width: 26px;
+  flex: 0 0 26px;
   padding-right: 4px;
-  vertical-align: top;
 }
 
-.msg-main { display: table-cell; vertical-align: top; }
+.msg-main { flex: 1; min-width: 0; }
 
 .msg-line { word-wrap: break-word; overflow-wrap: break-word; }
 
