@@ -526,24 +526,40 @@
       <button type="button" id="admin-close" class="linkbtn">close</button>
     </div>
 
-    <div class="modal-body">
+    <div class="modal-body admin-body">
 
-      <div class="admin-section">
-        <div class="admin-title">RANKS</div>
-        <div class="hint">Owner and co-owners can change ranks. You cannot change your own.</div>
+      <div class="admin-signed-in">signed in as <span id="admin-signed-in">-</span> &middot; type <tt>/help</tt> in chat for commands</div>
+
+      <div class="admin-tabs" role="tablist" id="admin-tabs">
+        <button type="button" class="admin-tab active" data-admin-tab="users" role="tab">users</button>
+        <button type="button" class="admin-tab" data-admin-tab="modcalls" role="tab">modcalls</button>
+        <button type="button" class="admin-tab" data-admin-tab="announce" role="tab">announce</button>
+        <button type="button" class="admin-tab" data-admin-tab="rooms" role="tab">rooms</button>
+      </div>
+
+      <div class="admin-tab-panel" id="admin-tab-users" role="tabpanel">
+        <div class="admin-title">RANKS &middot; BAN &middot; VERIFY</div>
+        <div class="hint">owner and co-owners change ranks. staff can ban and verify users.</div>
+        <div class="admin-row">
+          <div class="row-cell grow"><input id="admin-filter" type="text" maxlength="30" placeholder="filter users by name" autocomplete="off" spellcheck="false"></div>
+        </div>
         <div id="admin-users" class="admin-list"></div>
       </div>
 
-      <div class="admin-section">
+      <div class="admin-tab-panel" id="admin-tab-modcalls" role="tabpanel" hidden>
+        <div class="admin-title">MODCALLS</div>
+        <div class="hint">open calls from the chat. resolve them as you work through the list.</div>
+        <div id="admin-modcalls" class="admin-list"></div>
+      </div>
+
+      <div class="admin-tab-panel" id="admin-tab-announce" role="tabpanel" hidden>
         <div class="admin-title">ANNOUNCE</div>
         <div class="admin-row">
           <div class="row-cell grow"><input id="admin-announce" type="text" maxlength="500" placeholder="message to post as a system notice"></div>
           <div class="row-cell fit"><button type="button" id="admin-announce-btn" class="btn primary">send</button></div>
         </div>
-        <div class="hint">Posts to the room you are currently viewing.</div>
-      </div>
+        <div class="hint">posts to the room you are currently viewing.</div>
 
-      <div class="admin-section">
         <div class="admin-title">GLOBAL</div>
         <div class="admin-row">
           <div class="row-cell grow"><input id="admin-global-text" type="text" maxlength="500" placeholder="message to post in every room"></div>
@@ -557,51 +573,15 @@
           <div class="row-cell fit"><input id="admin-global-slow" type="number" min="0" max="300" step="1" value="0" class="short-input"></div>
           <div class="row-cell fit"><button type="button" id="admin-global-slow-btn" class="btn">apply slowmode to all rooms</button></div>
         </div>
-        <div class="hint">A locked room only lets the room owner and staff talk. Broadcasts post as a red system line everywhere.</div>
+        <div class="hint">a locked room only lets the room owner and staff talk. broadcasts post as red system lines everywhere.</div>
       </div>
 
-      <div class="admin-section">
-        <div class="admin-title">MODCALLS</div>
-        <div id="admin-modcalls" class="admin-list"></div>
-      </div>
-
-      <div class="admin-section">
+      <div class="admin-tab-panel" id="admin-tab-rooms" role="tabpanel" hidden>
         <div class="admin-title">ROOMS</div>
+        <div class="admin-row">
+          <div class="row-cell grow"><input id="admin-room-filter" type="text" maxlength="32" placeholder="filter rooms by name" autocomplete="off" spellcheck="false"></div>
+        </div>
         <div id="admin-rooms" class="admin-list"></div>
-      </div>
-
-      <div class="admin-section">
-        <div class="admin-title">FUN</div>
-        <div class="admin-buttons">
-          <button type="button" class="btn" data-fun="8ball">8-ball</button>
-          <button type="button" class="btn" data-fun="coinflip">coin flip</button>
-          <button type="button" class="btn" data-fun="roll">roll d20</button>
-          <button type="button" class="btn" data-fun="tableflip">table flip</button>
-          <button type="button" class="btn" data-fun="unflip">unflip</button>
-        </div>
-      </div>
-
-      <div class="admin-section">
-        <div class="admin-title">COMMANDS</div>
-        <div class="admin-cmds">
-          <div><tt>/ban username reason</tt> stop a user from chatting</div>
-          <div><tt>/unban username</tt> let a user chat again</div>
-          <div><tt>/purge 10</tt> delete the last 10 messages in this room</div>
-          <div><tt>/topic new topic</tt> change the room topic</div>
-          <div><tt>/announce text</tt> post a system notice</div>
-          <div><tt>/global text</tt> post a system notice in every room</div>
-          <div><tt>/globallock</tt> &middot; <tt>/globalunlock</tt> &middot; <tt>/globalslow 10</tt></div>
-          <div><tt>/pin</tt> &middot; <tt>/unpin</tt> pin or unpin the latest message</div>
-          <div><tt>/kick username</tt> remove someone from the room</div>
-          <div><tt>/mute username</tt> &middot; <tt>/unmute username</tt> room mute</div>
-          <div><tt>/roommod username</tt> &middot; <tt>/roomunmod username</tt></div>
-          <div><tt>/slowmode 10</tt> &middot; <tt>/lock</tt> &middot; <tt>/unlock</tt></div>
-          <div><tt>/invite username</tt> add someone to the room</div>
-          <div><tt>/modcall reason</tt> &middot; <tt>/report user reason</tt> &middot; <tt>/resolve id</tt></div>
-          <div><tt>/roominfo</tt> room size and message count</div>
-          <div><tt>/me action</tt> &middot; <tt>/shrug</tt> &middot; <tt>/roll 2d6</tt> &middot; <tt>/8ball</tt> &middot; <tt>/coinflip</tt></div>
-          <div><tt>/users</tt> &middot; <tt>/whois username</tt> &middot; <tt>/stats</tt> &middot; <tt>/color #ff0000</tt> &middot; <tt>/clear</tt></div>
-        </div>
       </div>
 
     </div>

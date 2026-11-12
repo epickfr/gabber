@@ -527,7 +527,9 @@ select.rank-select { width: auto; }
 
 .msg {
   display: table;
+  table-layout: fixed;
   width: 100%;
+  border-spacing: 0;
   padding: 3px 2px;
   border-bottom: 1px dotted #e2e9f1;
 }
@@ -1223,16 +1225,6 @@ input.short-input { width: 70px; }
 
 .admin-row { display: table; width: 100%; margin: 4px 0; border-spacing: 4px 0; }
 
-.admin-buttons { line-height: 2; }
-.admin-buttons .btn { margin: 0 4px 3px 0; }
-
-.admin-cmds { font-size: 10.5px; line-height: 1.8; color: #3b4a5a; }
-.admin-cmds tt {
-  padding: 0 3px;
-  background: #ffffcc;
-  border: 1px solid #d8c96a;
-}
-
 .muted { color: var(--muted); }
 .tiny-pad { padding: 5px 6px; }
 .right { text-align: right; }
@@ -1433,6 +1425,48 @@ select,
     1px 1px 0 #0c2c53,
     2px 2px 0 #123a6b,
     3px 3px 3px rgba(0, 0, 0, 0.35);
+}
+
+.admin-signed-in {
+  margin-bottom: 8px;
+  padding: 5px 8px;
+  background: #eef3f8;
+  border: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+#admin-modal .modal-box { max-width: 640px; }
+
+.admin-tabs {
+  overflow: hidden;
+  margin: -12px -12px 12px;
+  padding: 7px 10px 0;
+  background: linear-gradient(#fbfdff, #dfe8f2);
+  border-bottom: 1px solid var(--navy-dark);
+}
+
+.admin-tab {
+  float: left;
+  margin-right: 3px;
+  padding: 4px 11px;
+  background: #dfe8f2;
+  border: 1px solid #9db2c8;
+  border-bottom: 0;
+  color: var(--navy);
+  font: inherit;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.admin-tab:hover { background: #eef4fb; color: var(--navy-dark); }
+.admin-tab.active {
+  background: #ffffff;
+  border-bottom: 1px solid #ffffff;
+  margin-bottom: -1px;
+  color: var(--navy-dark);
 }
 
 .rank-admin, .rank-owner { border-bottom: 1px dotted currentColor; }

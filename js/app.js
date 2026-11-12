@@ -272,6 +272,9 @@
       modCalls: [],
       lastSent: new Map(),
       view: 'chat',
+      adminTab: 'users',
+      adminFilter: '',
+      adminRoomFilter: '',
       openTabs: [],
       activeTabKey: null
     };
@@ -389,6 +392,14 @@
     adminUsers: $id('admin-users'),
     adminRooms: $id('admin-rooms'),
     adminModcalls: $id('admin-modcalls'),
+    adminSignedIn: $id('admin-signed-in'),
+    adminTabs: $id('admin-tabs'),
+    adminFilter: $id('admin-filter'),
+    adminRoomFilter: $id('admin-room-filter'),
+    adminTabUsers: $id('admin-tab-users'),
+    adminTabModcalls: $id('admin-tab-modcalls'),
+    adminTabAnnounce: $id('admin-tab-announce'),
+    adminTabRooms: $id('admin-tab-rooms'),
     adminAnnounce: $id('admin-announce'),
     adminAnnounceBtn: $id('admin-announce-btn'),
     bellBtn: $id('bell-btn'),
@@ -1014,12 +1025,20 @@
     ui.adminClose.addEventListener('click', closeAdminPanel);
     ui.adminDone.addEventListener('click', closeAdminPanel);
     ui.adminModal.addEventListener('click', (event) => {
-      if (event.target === ui.adminModal) {
-        closeAdminPanel();
-        return;
-      }
-      const fun = event.target.closest('[data-fun]');
-      if (fun) runFunCommand(fun.dataset.fun);
+      if (event.target === ui.adminModal) closeAdminPanel();
+    });
+
+    ui.adminTabs.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-admin-tab]');
+      if (button) switchAdminTab(button.dataset.adminTab);
+    });
+    ui.adminFilter.addEventListener('input', () => {
+      state.adminFilter = ui.adminFilter.value.trim().toLowerCase();
+      renderAdminUsers();
+    });
+    ui.adminRoomFilter.addEventListener('input', () => {
+      state.adminRoomFilter = ui.adminRoomFilter.value.trim().toLowerCase();
+      renderAdminRooms();
     });
 
     ui.dialogConfirm.addEventListener('click', () => closeDialog('confirm'));
@@ -2655,7 +2674,7 @@
   async function loadRoomMessages(roomId) {
     const { data, error } = await sb
       .from('messages')
-      .select('id, body, created_at, sender, reply_to, reply_snippet, person:profiles!messages_sender_fkey(username, display_name, color, rank, avatar_url, banner_url, bio)')
+      .select('id, body, created_at, sender, reply_to, reply_snippet, person:profiles!messages_sender_fkey(username, display_name, color, rank, avatar_url, banner_url, bio, name_style, verified, show_verified)')
       .eq('room_id', roomId)
       .order('created_at', { ascending: false })
       .limit(100);
@@ -2680,7 +2699,7 @@
   async function loadDMMessages(threadId, friendId) {
     const { data, error } = await sb
       .from('dm_messages')
-      .select('id, body, created_at, sender, reply_to, reply_snippet, person:profiles!dm_messages_sender_fkey(username, display_name, color, rank, avatar_url, banner_url, bio)')
+      .select('id, body, created_at, sender, reply_to, reply_snippet, person:profiles!dm_messages_sender_fkey(username, display_name, color, rank, avatar_url, banner_url, bio, name_style, verified, show_verified)')
       .eq('thread_id', threadId)
       .order('created_at', { ascending: false })
       .limit(100);
@@ -2902,7 +2921,7 @@
     if (state.presenceChannel) return;
 
     const channel = sb.channel('epickchat-online', {
-      config: { private: true, presence: { key: state.me.id } }
+      config: { presence: { key: state.me.id } }
     });
 
     channel.on('presence', { event: 'sync' }, () => {
@@ -4368,18 +4387,6 @@
     return true;
   }
 
-  async function runFunCommand(kind) {
-    const map = {
-      '8ball': '/8ball will it work?',
-      coinflip: '/coinflip',
-      roll: '/roll d20',
-      tableflip: '/tableflip',
-      unflip: '/unflip'
-    };
-    const command = map[kind];
-    if (command) await runCommand(command);
-  }
-
   function openAdminPanel() {
     if (!isStaff()) {
       toast('Staff only.');
@@ -4387,6 +4394,11 @@
     }
     ui.adminModal.hidden = false;
     ui.adminAnnounce.value = '';
+    ui.adminFilter.value = '';
+    ui.adminRoomFilter.value = '';
+    state.adminFilter = '';
+    state.adminRoomFilter = '';
+    state.adminTab = 'users';
     renderAdminPanel();
     loadAdminUsers();
     loadModCalls();
@@ -4415,9 +4427,14 @@
   }
 
   function renderAdminPanel() {
+    const me = state.profile;
+    ui.adminSignedIn.textContent = 'signed in as ' + (me ? me.username : 'guest') + ' (' + (me ? rankOf(me) : '-') + ')';
+    switchAdminTab(state.adminTab || 'users');
+
     renderAdminUsers();
     renderAdminRooms();
     renderModCalls();
+
     const admin = isAdmin();
     const inRoom = Boolean(state.current && state.current.type === 'room');
     ui.adminAnnounceBtn.disabled = !inRoom || !admin;
@@ -4430,6 +4447,20 @@
     ui.adminGlobalSlowBtn.disabled = !admin;
   }
 
+  function switchAdminTab(name) {
+    state.adminTab = name;
+
+    const tabs = ui.adminTabs ? ui.adminTabs.querySelectorAll('.admin-tab') : [];
+    tabs.forEach((button) => {
+      button.classList.toggle('active', button.dataset.adminTab === name);
+    });
+
+    ui.adminTabUsers.hidden = name !== 'users';
+    ui.adminTabModcalls.hidden = name !== 'modcalls';
+    ui.adminTabAnnounce.hidden = name !== 'announce';
+    ui.adminTabRooms.hidden = name !== 'rooms';
+  }
+
   function renderAdminUsers() {
     ui.adminUsers.replaceChildren();
 
@@ -4438,11 +4469,24 @@
       return;
     }
 
+    const filter = (state.adminFilter || '').toLowerCase();
+    const visible = filter
+      ? state.adminUsers.filter((person) => {
+          const hay = (person.username + ' ' + (person.display_name || '') + ' ' + (person.banned ? 'banned' : '') + ' ' + (person.verified ? 'verified' : '')).toLowerCase();
+          return hay.indexOf(filter) !== -1;
+        })
+      : state.adminUsers;
+
+    if (!visible.length) {
+      ui.adminUsers.append(h('div', { class: 'muted tiny-pad', text: 'no matching users' }));
+      return;
+    }
+
     const allowed = canManageRanks();
     const myRank = rankOf(state.profile);
     const ranks = ['owner', 'co-owner', 'admin', 'mod', 'member'];
 
-    for (const person of state.adminUsers) {
+    for (const person of visible) {
       const select = h('select', { class: 'rank-select', 'data-rank-user': person.id });
       for (const rank of ranks) {
         const blocked = myRank === 'co-owner' && (rank === 'owner' || rank === 'co-owner');
@@ -4493,13 +4537,20 @@
   function renderAdminRooms() {
     ui.adminRooms.replaceChildren();
 
+    const filter = (state.adminRoomFilter || '').toLowerCase();
     const rooms = state.rooms.filter((room) => !room.is_private || state.myRoomIds.has(room.id));
     if (!rooms.length) {
       ui.adminRooms.append(h('div', { class: 'muted tiny-pad', text: 'no rooms' }));
       return;
     }
 
-    for (const room of rooms) {
+    const visible = filter ? rooms.filter((room) => room.name.toLowerCase().indexOf(filter) !== -1) : rooms;
+    if (!visible.length) {
+      ui.adminRooms.append(h('div', { class: 'muted tiny-pad', text: 'no matching rooms' }));
+      return;
+    }
+
+    for (const room of visible) {
       const row = h('div', { class: 'admin-room' },
         h('span', { class: 'admin-name', text: (room.is_private ? '*' : '#') + ' ' + room.name }),
         h('span', { class: 'muted tiny-pad', text: room.topic || '' })
