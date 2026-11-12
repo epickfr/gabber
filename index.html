@@ -1,1 +1,693 @@
-SHUT DOWN
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epick Chat - free web chat</title>
+<meta name="description" content="Epick Chat is a free chat system. Make an account, add friends, and talk in public or private rooms.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+
+<body>
+
+<a name="top"></a>
+
+<table class="page" width="100%" border="0" cellpadding="0" cellspacing="0">
+
+  <tr>
+    <td class="top-banner">
+      <table width="100%" border="0" cellpadding="0" cellspacing="0">
+        <tr>
+          <td class="brand-cell">
+            <div class="brand">EPICK CHAT</div>
+            <div class="tagline">a free chat system for the world wide web</div>
+          </td>
+          <td class="top-right" id="header-user" hidden>
+            <div class="bell-wrap">
+              <button type="button" id="bell-btn" class="bell-btn" title="notifications" aria-label="notifications">
+                <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+                  <path d="M8 1.6c-2.1 0-3.4 1.7-3.4 3.7 0 2.1-.7 3.1-1.5 4h9.8c-.8-.9-1.5-1.9-1.5-4 0-2-1.3-3.7-3.4-3.7z" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                  <path d="M6.4 11.6a1.6 1.6 0 0 0 3.2 0" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                </svg>
+                <span id="bell-count" class="bell-count" hidden>0</span>
+              </button>
+              <div id="bell-panel" class="bell-panel" hidden>
+                <div class="bell-head">
+                  <span>NOTIFICATIONS</span>
+                  <button type="button" id="bell-clear" class="linkbtn">mark all read</button>
+                </div>
+                <div id="bell-list" class="bell-list"></div>
+              </div>
+            </div>
+
+            <button type="button" id="alerts-btn" class="btn tiny" title="show desktop alerts for mentions and private messages">alerts: off</button>
+
+            <div id="sidebar-me" class="header-me"></div>
+            <button type="button" id="edit-profile-btn" class="btn tiny">edit profile</button>
+            <button type="button" id="admin-btn" class="btn tiny" hidden>admin</button>
+            <button type="button" id="logout-btn" class="linkbtn">log out</button>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="nav-bar">
+      <div class="nav-tabs">
+        <a href="#top" class="nav-link active" data-nav="home">home</a>
+        <a href="#chat" class="nav-link" data-nav="chat">chat</a>
+        <a href="#" class="nav-link" data-nav="rooms">rooms</a>
+        <a href="#" class="nav-link" data-nav="friends">friends</a>
+        <span id="nav-user" hidden>
+          <a href="#" class="nav-link" data-nav="new-room">new room</a>
+          <a href="#" class="nav-link" data-nav="join-room">join room</a>
+          <a href="#" class="nav-link" data-nav="profile">profile</a>
+          <a href="#" class="nav-link" id="nav-admin" data-nav="admin" hidden>admin</a>
+          <a href="#" class="nav-link" data-nav="logout">log out</a>
+        </span>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="page-body">
+
+      <div class="mobile-bar">
+        <button type="button" id="sidebar-toggle" class="linkbtn">[ rooms &amp; friends ]</button>
+      </div>
+
+      <main id="app-window" hidden>
+
+        <div id="room-tabs-bar" class="room-tabs-bar" hidden>
+          <div id="room-tabs" class="room-tabs"></div>
+        </div>
+
+        <table id="app-body" class="layout" width="100%" border="0" cellpadding="0" cellspacing="0">
+          <tr>
+
+            <td class="col-left sidebar" id="sidebar">
+
+              <table class="box" width="100%" border="0" cellpadding="0" cellspacing="0">
+                <tr><td class="box-head">MY ROOMS</td></tr>
+                <tr><td class="box-body">
+                  <div id="my-rooms" class="side-list"></div>
+                  <div class="side-actions">
+                    <button type="button" id="new-room-btn" class="linkbtn">+ new room</button><br>
+                    <button type="button" id="join-room-btn" class="linkbtn">join by invite code</button>
+                  </div>
+                </td></tr>
+              </table>
+
+              <table class="box" width="100%" border="0" cellpadding="0" cellspacing="0">
+                <tr><td class="box-head">PUBLIC ROOMS</td></tr>
+                <tr><td class="box-body">
+                  <div id="public-rooms" class="side-list"></div>
+                </td></tr>
+              </table>
+
+              <table class="box" width="100%" border="0" cellpadding="0" cellspacing="0">
+                <tr><td class="box-head">FRIENDS <span id="friend-count" class="title-count"></span></td></tr>
+                <tr><td class="box-body">
+                  <div id="friend-requests"></div>
+                  <div id="friends" class="side-list"></div>
+
+                  <form id="add-friend-form" action="#" method="post" autocomplete="off" class="find-form">
+                    <label for="friend-search">find a user</label>
+                    <div class="find-row">
+                      <div class="row-cell grow"><input id="friend-search" type="text" maxlength="20"></div>
+                      <div class="row-cell fit"><button type="submit" class="btn tiny">find</button></div>
+                    </div>
+                  </form>
+                  <div id="friend-results" class="side-list"></div>
+                </td></tr>
+              </table>
+
+            </td>
+
+            <td class="col-mid chat">
+              <a name="chat"></a>
+
+              <table class="box chat-box" id="chat-panel" width="100%" height="100%" border="0" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td class="box-head chat-head" id="channel-header">
+                    <div class="chat-head-line">
+                      <span id="channel-name">-</span>
+                      <span id="channel-actions"></span>
+                    </div>
+                    <div id="channel-topic">select a room or a friend to start chatting</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="chat-body">
+                    <div id="pinned-bar" class="pinned-bar" hidden>
+                      <span class="pinned-label">PINNED</span>
+                      <span id="pinned-text" class="pinned-text"></span>
+                      <button type="button" id="pinned-jump" class="linkbtn">jump</button>
+                      <button type="button" id="pinned-unpin" class="linkbtn" hidden>unpin</button>
+                    </div>
+                    <div id="messages" class="messages"></div>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="chat-foot">
+                    <form id="composer" action="#" method="post" autocomplete="off">
+                      <div id="ban-notice" class="ban-notice" hidden></div>
+                      <div id="room-notice" class="ban-notice" hidden></div>
+                      <div id="reply-bar" class="reply-bar" hidden>
+                        <span id="reply-text" class="reply-text"></span>
+                        <button type="button" id="reply-cancel" class="linkbtn">cancel</button>
+                      </div>
+                      <div class="composer-row">
+                        <div class="row-cell fit"><button type="button" id="image-btn" class="btn" title="Send an image">image</button></div>
+                        <div class="row-cell grow"><input id="message-input" type="text" maxlength="2000" placeholder="type a message, /help for commands"></div>
+                        <div class="row-cell fit"><button type="submit" id="composer-submit" class="btn primary">Send</button></div>
+                      </div>
+                      <input id="image-file" type="file" accept="image/*" hidden>
+                    </form>
+                  </td>
+                </tr>
+              </table>
+
+              <table class="box" id="home-panel" width="100%" border="0" cellpadding="0" cellspacing="0" hidden>
+                <tr><td class="box-head">WELCOME TO EPICK CHAT</td></tr>
+                <tr><td class="box-body home-panel-body">
+                  <div class="home-hero">
+                    <div class="home-hero-title">a free chat system for the world wide web</div>
+                    <p>Pick a room, add friends, and talk in real time. No email address is needed.</p>
+                  </div>
+                  <table width="100%" border="0" cellpadding="0" cellspacing="0" class="home-grid">
+                    <tr>
+                      <td width="33%" valign="top" class="home-tile">
+                        <div class="home-tile-head">CHAT</div>
+                        <p>Jump back into the conversation.</p>
+                        <button type="button" class="btn" data-nav="chat">open chat</button>
+                      </td>
+                      <td width="33%" valign="top" class="home-tile">
+                        <div class="home-tile-head">ROOMS</div>
+                        <p>Find a public room or start your own.</p>
+                        <button type="button" class="btn" data-nav="rooms">room list</button>
+                      </td>
+                      <td width="33%" valign="top" class="home-tile">
+                        <div class="home-tile-head">FRIENDS</div>
+                        <p>See who is online and send a private message.</p>
+                        <button type="button" class="btn" data-nav="friends">friends</button>
+                      </td>
+                    </tr>
+                  </table>
+                  <div class="home-note">Tip: type <tt>/help</tt> in chat for the command list.</div>
+                </td></tr>
+              </table>
+
+              <table class="box" id="rooms-panel" width="100%" border="0" cellpadding="0" cellspacing="0" hidden>
+                <tr><td class="box-head">ROOM DIRECTORY</td></tr>
+                <tr><td class="box-body">
+                  <div class="panel-intro">Public rooms on Epick Chat. Open one to join, or start your own.</div>
+                  <div id="rooms-panel-body" class="directory-wrap"></div>
+                  <div class="panel-actions">
+                    <button type="button" id="rooms-panel-new" class="btn">new room</button>
+                    <button type="button" id="rooms-panel-join" class="btn">join by invite code</button>
+                  </div>
+                </td></tr>
+              </table>
+
+              <table class="box" id="friends-panel" width="100%" border="0" cellpadding="0" cellspacing="0" hidden>
+                <tr><td class="box-head">FRIENDS</td></tr>
+                <tr><td class="box-body">
+                  <div class="panel-intro">Your friends and pending requests. Use the find box on the left to add someone.</div>
+                  <div id="friends-panel-body" class="directory-wrap"></div>
+                </td></tr>
+              </table>
+
+            </td>
+
+            <td class="col-right rightbar">
+
+              <table class="box" width="100%" border="0" cellpadding="0" cellspacing="0">
+                <tr><td class="box-head">MY PROFILE</td></tr>
+                <tr><td class="box-body">
+                  <div id="my-card" class="my-card"></div>
+                </td></tr>
+              </table>
+
+              <table class="box" width="100%" border="0" cellpadding="0" cellspacing="0">
+                <tr><td class="box-head" id="userlist-title">PEOPLE</td></tr>
+                <tr><td class="box-body">
+                  <div id="member-list" class="member-list"></div>
+                </td></tr>
+              </table>
+
+            </td>
+
+          </tr>
+        </table>
+
+        <table class="statusbar" width="100%" border="0" cellpadding="0" cellspacing="0">
+          <tr>
+            <td class="status-left">
+              <span class="status-dot offline" id="status-dot"></span>
+              <span id="status-connection">offline</span>
+              <span class="status-sep">|</span>
+              <span id="status-user">guest</span>
+              <span class="status-sep">|</span>
+              <span id="status-online">0 online</span>
+            </td>
+            <td class="status-right">
+              <span id="status-clock">--:--:--</span>
+            </td>
+          </tr>
+        </table>
+
+      </main>
+
+    </td>
+  </tr>
+
+  <tr>
+    <td class="site-footer">
+      Created by Epick
+    </td>
+  </tr>
+
+</table>
+
+<div id="auth-overlay" class="auth-wrap">
+  <table class="auth-card" width="380" border="0" cellpadding="0" cellspacing="0">
+    <tr>
+      <td class="auth-head">
+        <span>MEMBER LOGIN</span>
+      </td>
+    </tr>
+
+    <tr>
+      <td class="auth-body">
+
+        <div id="setup-panel" hidden>
+          <b>SETUP REQUIRED</b>
+          <p>This chat needs a free Supabase database before it can run. It takes about 5 minutes:</p>
+          <ol>
+            <li>Create a project at <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a>.</li>
+            <li>Open <b>SQL Editor</b> and run <tt>supabase/schema.sql</tt>.</li>
+            <li>Go to <b>Project Settings &gt; API</b> and copy the Project URL and the <tt>anon</tt> public key.</li>
+            <li>Paste them into <tt>js/config.js</tt> locally, or set <tt>SUPABASE_URL</tt> and <tt>SUPABASE_ANON_KEY</tt> in Render.</li>
+            <li>Reload this page.</li>
+          </ol>
+          <p>The full walkthrough is in <tt>README.md</tt>. Messages are stored in Postgres, so they survive redeploys.</p>
+          <p><button type="button" class="btn" onclick="location.reload()">I configured it - reload</button></p>
+        </div>
+
+        <div id="auth-main">
+          <div id="auth-tabs" class="auth-tabs">
+            <button type="button" class="auth-tab active" data-tab="login">Sign in</button>
+            <span class="tab-sep">|</span>
+            <button type="button" class="auth-tab" data-tab="register">Register</button>
+          </div>
+
+          <hr>
+
+          <form id="login-form" action="#" method="post">
+            <table class="form-table" width="100%" border="0" cellpadding="0" cellspacing="0">
+              <tr>
+                <td class="form-label"><label for="login-username">Username</label></td>
+                <td class="form-input"><input id="login-username" type="text" name="username" required autocomplete="username"></td>
+              </tr>
+              <tr>
+                <td class="form-label"><label for="login-password">Password</label></td>
+                <td class="form-input"><input id="login-password" type="password" name="password" required autocomplete="current-password"></td>
+              </tr>
+            </table>
+            <p class="form-actions"><button type="submit" class="btn primary">Enter chat</button></p>
+          </form>
+
+          <form id="register-form" action="#" method="post" hidden>
+            <table class="form-table" width="100%" border="0" cellpadding="0" cellspacing="0">
+              <tr>
+                <td class="form-label"><label for="register-username">Username</label></td>
+                <td class="form-input"><input id="register-username" type="text" name="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+" autocomplete="username"></td>
+              </tr>
+              <tr>
+                <td class="form-label"><label for="register-display">Display name</label></td>
+                <td class="form-input"><input id="register-display" type="text" name="display" maxlength="30" autocomplete="nickname" placeholder="optional"></td>
+              </tr>
+              <tr>
+                <td class="form-label"><label for="register-password">Password</label></td>
+                <td class="form-input"><input id="register-password" type="password" name="password" required minlength="6" autocomplete="new-password"></td>
+              </tr>
+            </table>
+            <div class="hint">3-20 letters, numbers, underscores. Password at least 6 characters.</div>
+
+            <p class="form-actions"><button type="submit" class="btn primary">Create account</button></p>
+          </form>
+
+          <div id="auth-error" class="auth-error" hidden></div>
+
+          <div class="hint auth-foot">
+            Free accounts. No ads. Pick a name and start talking.
+          </div>
+        </div>
+
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div id="profile-modal" class="modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head">
+      <span>EDIT PROFILE</span>
+      <button type="button" id="profile-close" class="linkbtn">close</button>
+    </div>
+
+    <div class="modal-body">
+
+      <div class="banner-preview" id="profile-banner-preview"></div>
+
+      <table width="100%" border="0" cellpadding="0" cellspacing="0">
+        <tr>
+          <td width="70" valign="top"><div id="profile-avatar-preview" class="avatar-preview"></div></td>
+          <td valign="top" class="editor-top-fields">
+            <div class="field-row">
+              <label for="profile-display">Display name</label>
+              <input id="profile-display" type="text" maxlength="30">
+            </div>
+            <div class="hint">Shown under your username. Leave blank to use your username.</div>
+          </td>
+        </tr>
+      </table>
+
+      <div class="field-block">
+        <label for="profile-bio">Bio</label>
+        <textarea id="profile-bio" maxlength="280" rows="3" placeholder="tell people who you are"></textarea>
+        <div class="hint right"><span id="profile-bio-count">0</span> / 280</div>
+      </div>
+
+      <div class="field-block">
+        <label>Avatar colour</label>
+        <div class="swatches" id="profile-colors"></div>
+        <div class="hint">Used when you have no profile photo.</div>
+      </div>
+
+      <div class="field-block">
+        <label for="profile-name-style">Name style</label>
+        <div id="profile-name-preview" class="name-preview">your name</div>
+        <select id="profile-name-style" class="rank-select name-style-select"></select>
+        <div class="hint">A fun gradient for your username in messages, member lists and profile cards.</div>
+      </div>
+
+      <div class="field-block">
+        <label class="check-row" for="profile-verified-show"><input type="checkbox" id="profile-verified-show"> show my verified badge</label>
+        <div class="hint">You can only show the badge if a staff member verified your account.</div>
+      </div>
+
+      <div class="field-block">
+        <label>Profile gradient</label>
+        <div id="profile-grad-preview" class="grad-preview"></div>
+        <div class="grad-row">
+          <span class="grad-label">from</span>
+          <div class="swatches" id="profile-grad-from"></div>
+        </div>
+        <div class="grad-row">
+          <span class="grad-label">to</span>
+          <div class="swatches" id="profile-grad-to"></div>
+        </div>
+        <div class="hint"><button type="button" id="profile-grad-clear" class="linkbtn">clear gradient</button> - colours show behind your profile card.</div>
+      </div>
+
+      <div class="field-block">
+        <label for="profile-avatar-file">Profile photo</label>
+        <input id="profile-avatar-file" type="file" accept="image/*">
+        <div class="hint">Square works best. Max 5 MB.</div>
+      </div>
+
+      <div class="field-block">
+        <label>Banner</label>
+        <div class="banner-grid" id="profile-banners"></div>
+        <div class="hint">Presets are 2300 x 1080. You can also upload your own.</div>
+        <input id="profile-banner-file" type="file" accept="image/*">
+      </div>
+
+    </div>
+
+    <div class="modal-foot">
+      <button type="button" id="profile-save" class="btn primary">save profile</button>
+      <button type="button" id="profile-cancel" class="btn">cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="room-modal" class="modal" hidden>
+  <div class="modal-box wide">
+    <div class="modal-head">
+      <span>ROOM SETTINGS</span>
+      <button type="button" id="room-close" class="linkbtn">close</button>
+    </div>
+
+    <div class="modal-body">
+
+      <table width="100%" border="0" cellpadding="0" cellspacing="0">
+        <tr>
+          <td width="80" valign="top"><div id="room-icon-preview" class="room-icon-preview"></div></td>
+          <td valign="top" class="editor-top-fields">
+            <label for="room-icon-file">Room photo</label>
+            <input id="room-icon-file" type="file" accept="image/*">
+            <div class="hint">Square works best. Max 5 MB.</div>
+          </td>
+        </tr>
+      </table>
+
+      <div class="field-row">
+        <label for="room-name">Name</label>
+        <input id="room-name" type="text" maxlength="32">
+      </div>
+      <div class="field-row">
+        <label for="room-topic">Topic</label>
+        <input id="room-topic" type="text" maxlength="200">
+      </div>
+      <div class="field-row">
+        <label for="room-welcome">Welcome</label>
+        <input id="room-welcome" type="text" maxlength="200" placeholder="shown when someone opens the room">
+      </div>
+
+      <div class="field-block">
+        <label>Accent colour</label>
+        <div class="swatches" id="room-accents"></div>
+      </div>
+
+      <div class="field-row">
+        <label for="room-font">Chat font</label>
+        <select id="room-font" class="rank-select">
+          <option value="default">default</option>
+          <option value="mono">courier</option>
+          <option value="serif">serif</option>
+          <option value="comic">comic sans</option>
+          <option value="typewriter">typewriter</option>
+        </select>
+      </div>
+
+      <div class="field-row">
+        <label for="room-mode">Who can talk</label>
+        <select id="room-mode" class="rank-select">
+          <option value="open">everyone</option>
+          <option value="mods">room mods only</option>
+          <option value="owner">owner only</option>
+        </select>
+      </div>
+
+      <div class="field-row">
+        <label for="room-slowmode">Slowmode</label>
+        <input id="room-slowmode" type="number" min="0" max="300" step="1" class="short-input">
+        <span class="hint">seconds between messages, 0 = off</span>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">MEMBERS</div>
+        <div id="room-members" class="admin-list"></div>
+      </div>
+
+      <div class="admin-section" id="room-muted-section">
+        <div class="admin-title">MUTED</div>
+        <div id="room-muted" class="admin-list"></div>
+      </div>
+
+    </div>
+
+    <div class="modal-foot">
+      <button type="button" id="room-save" class="btn primary">save settings</button>
+      <button type="button" id="room-cancel" class="btn">cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="admin-modal" class="modal" hidden>
+  <div class="modal-box wide">
+    <div class="modal-head">
+      <span>ADMIN PANEL</span>
+      <button type="button" id="admin-close" class="linkbtn">close</button>
+    </div>
+
+    <div class="modal-body">
+
+      <div class="admin-section">
+        <div class="admin-title">RANKS</div>
+        <div class="hint">Owner and co-owners can change ranks. You cannot change your own.</div>
+        <div id="admin-users" class="admin-list"></div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">ANNOUNCE</div>
+        <div class="admin-row">
+          <div class="row-cell grow"><input id="admin-announce" type="text" maxlength="500" placeholder="message to post as a system notice"></div>
+          <div class="row-cell fit"><button type="button" id="admin-announce-btn" class="btn primary">send</button></div>
+        </div>
+        <div class="hint">Posts to the room you are currently viewing.</div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">GLOBAL</div>
+        <div class="admin-row">
+          <div class="row-cell grow"><input id="admin-global-text" type="text" maxlength="500" placeholder="message to post in every room"></div>
+          <div class="row-cell fit"><button type="button" id="admin-global-send" class="btn primary">broadcast</button></div>
+        </div>
+        <div class="admin-row">
+          <div class="row-cell fit"><button type="button" id="admin-global-lock" class="btn danger">lock all rooms</button></div>
+          <div class="row-cell fit"><button type="button" id="admin-global-unlock" class="btn">unlock all rooms</button></div>
+        </div>
+        <div class="admin-row">
+          <div class="row-cell fit"><input id="admin-global-slow" type="number" min="0" max="300" step="1" value="0" class="short-input"></div>
+          <div class="row-cell fit"><button type="button" id="admin-global-slow-btn" class="btn">apply slowmode to all rooms</button></div>
+        </div>
+        <div class="hint">A locked room only lets the room owner and staff talk. Broadcasts post as a red system line everywhere.</div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">MODCALLS</div>
+        <div id="admin-modcalls" class="admin-list"></div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">ROOMS</div>
+        <div id="admin-rooms" class="admin-list"></div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">FUN</div>
+        <div class="admin-buttons">
+          <button type="button" class="btn" data-fun="8ball">8-ball</button>
+          <button type="button" class="btn" data-fun="coinflip">coin flip</button>
+          <button type="button" class="btn" data-fun="roll">roll d20</button>
+          <button type="button" class="btn" data-fun="tableflip">table flip</button>
+          <button type="button" class="btn" data-fun="unflip">unflip</button>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">COMMANDS</div>
+        <div class="admin-cmds">
+          <div><tt>/ban username reason</tt> stop a user from chatting</div>
+          <div><tt>/unban username</tt> let a user chat again</div>
+          <div><tt>/purge 10</tt> delete the last 10 messages in this room</div>
+          <div><tt>/topic new topic</tt> change the room topic</div>
+          <div><tt>/announce text</tt> post a system notice</div>
+          <div><tt>/global text</tt> post a system notice in every room</div>
+          <div><tt>/globallock</tt> &middot; <tt>/globalunlock</tt> &middot; <tt>/globalslow 10</tt></div>
+          <div><tt>/pin</tt> &middot; <tt>/unpin</tt> pin or unpin the latest message</div>
+          <div><tt>/kick username</tt> remove someone from the room</div>
+          <div><tt>/mute username</tt> &middot; <tt>/unmute username</tt> room mute</div>
+          <div><tt>/roommod username</tt> &middot; <tt>/roomunmod username</tt></div>
+          <div><tt>/slowmode 10</tt> &middot; <tt>/lock</tt> &middot; <tt>/unlock</tt></div>
+          <div><tt>/invite username</tt> add someone to the room</div>
+          <div><tt>/modcall reason</tt> &middot; <tt>/report user reason</tt> &middot; <tt>/resolve id</tt></div>
+          <div><tt>/roominfo</tt> room size and message count</div>
+          <div><tt>/me action</tt> &middot; <tt>/shrug</tt> &middot; <tt>/roll 2d6</tt> &middot; <tt>/8ball</tt> &middot; <tt>/coinflip</tt></div>
+          <div><tt>/users</tt> &middot; <tt>/whois username</tt> &middot; <tt>/stats</tt> &middot; <tt>/color #ff0000</tt> &middot; <tt>/clear</tt></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-foot">
+      <button type="button" id="admin-done" class="btn">done</button>
+    </div>
+  </div>
+</div>
+
+<div id="dialog-modal" class="modal" hidden>
+  <div class="modal-box small" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+    <div class="modal-head">
+      <span id="dialog-title">CONFIRM</span>
+      <button type="button" id="dialog-close" class="linkbtn">close</button>
+    </div>
+    <div class="modal-body">
+      <p id="dialog-message" class="dialog-message"></p>
+      <input id="dialog-input" type="text" maxlength="200" autocomplete="off" hidden>
+      <div id="dialog-error" class="auth-error" hidden></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" id="dialog-cancel" class="btn">cancel</button>
+      <button type="button" id="dialog-confirm" class="btn primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<div id="new-room-modal" class="modal" hidden>
+  <div class="modal-box small" role="dialog" aria-modal="true" aria-labelledby="new-room-title">
+    <div class="modal-head">
+      <span id="new-room-title">CREATE A ROOM</span>
+      <button type="button" id="new-room-close" class="linkbtn">close</button>
+    </div>
+    <div class="modal-body">
+      <form id="new-room-form" action="#" method="post" autocomplete="off">
+        <div class="field-row">
+          <label for="new-room-name">Name</label>
+          <input id="new-room-name" type="text" maxlength="32" placeholder="1-32 characters" required>
+        </div>
+        <div class="field-row">
+          <label for="new-room-topic">Topic</label>
+          <input id="new-room-topic" type="text" maxlength="200" placeholder="optional - what is this room about?">
+        </div>
+        <div class="field-block">
+          <label class="check-row" for="new-room-private"><input type="checkbox" id="new-room-private"> private room</label>
+          <div class="hint">Public rooms appear in the directory. Private rooms need the invite code.</div>
+        </div>
+        <div id="new-room-error" class="auth-error" hidden></div>
+        <p class="form-actions"><button type="submit" id="new-room-create" class="btn primary">create room</button></p>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button type="button" id="new-room-cancel" class="btn">cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="join-room-modal" class="modal" hidden>
+  <div class="modal-box small" role="dialog" aria-modal="true" aria-labelledby="join-room-title">
+    <div class="modal-head">
+      <span id="join-room-title">INVITE CODE</span>
+      <button type="button" id="join-room-close" class="linkbtn">close</button>
+    </div>
+    <div class="modal-body">
+      <form id="join-room-form" action="#" method="post" autocomplete="off">
+        <div class="field-row">
+          <label for="join-room-code">Code</label>
+          <input id="join-room-code" type="text" maxlength="40" placeholder="paste the invite code" required spellcheck="false" autocapitalize="off" autocorrect="off">
+        </div>
+        <div id="join-room-error" class="auth-error" hidden></div>
+        <p class="form-actions"><button type="submit" id="join-room-join" class="btn primary">join room</button></p>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button type="button" id="join-room-cancel" class="btn">cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script type="text/javascript" src="js/config.js"></script>
+<script type="text/javascript" src="js/banners.js"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script type="text/javascript" src="js/app.js"></script>
+
+</body>
+</html>
