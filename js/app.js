@@ -263,6 +263,7 @@
       awayDigest: null,
       awayTimer: null,
       roomDraft: null,
+      pinnedMessage: null,
       modCalls: [],
       lastSent: new Map(),
       view: 'chat',
@@ -299,6 +300,36 @@
     roomsPanelJoin: $id('rooms-panel-join'),
     friendsPanel: $id('friends-panel'),
     friendsPanelBody: $id('friends-panel-body'),
+    dialogModal: $id('dialog-modal'),
+    dialogTitle: $id('dialog-title'),
+    dialogMessage: $id('dialog-message'),
+    dialogInput: $id('dialog-input'),
+    dialogError: $id('dialog-error'),
+    dialogCancel: $id('dialog-cancel'),
+    dialogConfirm: $id('dialog-confirm'),
+    dialogClose: $id('dialog-close'),
+    newRoomModal: $id('new-room-modal'),
+    newRoomForm: $id('new-room-form'),
+    newRoomName: $id('new-room-name'),
+    newRoomTopic: $id('new-room-topic'),
+    newRoomPrivate: $id('new-room-private'),
+    newRoomError: $id('new-room-error'),
+    newRoomClose: $id('new-room-close'),
+    newRoomCancel: $id('new-room-cancel'),
+    joinRoomModal: $id('join-room-modal'),
+    joinRoomForm: $id('join-room-form'),
+    joinRoomCode: $id('join-room-code'),
+    joinRoomError: $id('join-room-error'),
+    joinRoomClose: $id('join-room-close'),
+    joinRoomCancel: $id('join-room-cancel'),
+    newRoomSubmit: $id('new-room-create'),
+    joinRoomSubmit: $id('join-room-join'),
+    pinnedBar: $id('pinned-bar'),
+    pinnedText: $id('pinned-text'),
+    pinnedJump: $id('pinned-jump'),
+    pinnedUnpin: $id('pinned-unpin'),
+    roomMuted: $id('room-muted'),
+    roomMutedSection: $id('room-muted-section'),
     myRooms: $id('my-rooms'),
     publicRooms: $id('public-rooms'),
     friendCount: $id('friend-count'),
@@ -367,6 +398,9 @@
     profileGradTo: $id('profile-grad-to'),
     profileGradClear: $id('profile-grad-clear'),
     profileGradPreview: $id('profile-grad-preview'),
+    profileNameStyle: $id('profile-name-style'),
+    profileNamePreview: $id('profile-name-preview'),
+    profileVerifiedShow: $id('profile-verified-show'),
     adminGlobalText: $id('admin-global-text'),
     adminGlobalSend: $id('admin-global-send'),
     adminGlobalLock: $id('admin-global-lock'),
@@ -420,6 +454,92 @@
     ui.toast.hidden = false;
     clearTimeout(state.toastTimer);
     state.toastTimer = setTimeout(() => { ui.toast.hidden = true; }, 3200);
+  }
+
+  const dialogState = { resolve: null, opts: null };
+
+  function openDialog(opts) {
+    return new Promise((resolve) => {
+      dialogState.opts = opts || {};
+      dialogState.resolve = resolve;
+
+      ui.dialogTitle.textContent = (opts && opts.title) || 'CONFIRM';
+      ui.dialogMessage.textContent = (opts && opts.message) || '';
+      ui.dialogConfirm.textContent = (opts && opts.confirmText) || 'OK';
+      ui.dialogCancel.hidden = Boolean(opts && opts.hideCancel);
+
+      if (opts && opts.danger) ui.dialogConfirm.classList.add('danger');
+      else ui.dialogConfirm.classList.remove('danger');
+
+      if (opts && opts.input) {
+        ui.dialogInput.hidden = false;
+        ui.dialogInput.value = opts.input.value || '';
+        ui.dialogInput.placeholder = opts.input.placeholder || '';
+        ui.dialogInput.maxLength = opts.input.maxLength || 200;
+        ui.dialogInput.readOnly = Boolean(opts.input.readOnly);
+        ui.dialogError.hidden = true;
+        ui.dialogError.textContent = '';
+      } else {
+        ui.dialogInput.hidden = true;
+      }
+
+      ui.dialogModal.hidden = false;
+
+      requestAnimationFrame(() => {
+        if (opts && opts.input && !opts.input.readOnly) ui.dialogInput.focus();
+        else if (opts && opts.input && opts.input.readOnly) {
+          ui.dialogInput.focus();
+          ui.dialogInput.select();
+        }
+        else ui.dialogConfirm.focus();
+      });
+    });
+  }
+
+  function closeDialog(result) {
+    if (ui.dialogModal.hidden) return;
+
+    const opts = dialogState.opts;
+    const resolve = dialogState.resolve;
+
+    if (result === 'confirm' && opts && opts.input) {
+      const value = ui.dialogInput.value.trim();
+      if (opts.input.required && !value) {
+        ui.dialogError.textContent = 'this field is required.';
+        ui.dialogError.hidden = false;
+        ui.dialogInput.focus();
+        return;
+      }
+
+      ui.dialogModal.hidden = true;
+      dialogState.opts = null;
+      dialogState.resolve = null;
+      if (resolve) resolve(value);
+      return;
+    }
+
+    ui.dialogModal.hidden = true;
+    dialogState.opts = null;
+    dialogState.resolve = null;
+    if (resolve) resolve(result === 'confirm' ? true : null);
+  }
+
+  function confirmBox(message, opts) {
+    return openDialog(Object.assign({
+      title: 'CONFIRM',
+      message: message,
+      confirmText: 'confirm'
+    }, opts)).then((result) => result === true);
+  }
+
+  function promptBox(message, opts) {
+    const options = opts || {};
+    return openDialog({
+      title: options.title || 'INPUT',
+      message: message,
+      confirmText: options.confirmText || 'OK',
+      input: Object.assign({ placeholder: '', value: '', maxLength: 200 }, options.input)
+    });
   }
 
   function init() {
@@ -546,6 +666,9 @@
     ui.roomTabs.replaceChildren();
     ui.roomsPanelBody.replaceChildren();
     ui.friendsPanelBody.replaceChildren();
+    ui.pinnedBar.hidden = true;
+    ui.pinnedUnpin.hidden = true;
+    state.pinnedMessage = null;
     showView('home');
     setActiveNav('home');
     setConnection('offline');
@@ -740,6 +863,17 @@
       state.editor.grad_to = '';
       renderEditorPreviews();
     });
+    ui.profileNameStyle.addEventListener('change', () => {
+      if (!state.editor) return;
+      const value = ui.profileNameStyle.value;
+      state.editor.name_style = NAME_STYLE_NAMES.indexOf(value) === -1 ? '' : value;
+      renderEditorPreviews();
+    });
+    ui.profileVerifiedShow.addEventListener('change', () => {
+      if (!state.editor) return;
+      state.editor.show_verified = ui.profileVerifiedShow.checked;
+      renderEditorPreviews();
+    });
     ui.profileBanners.addEventListener('click', (event) => {
       const tile = event.target.closest('[data-banner]');
       if (!tile || !state.editor) return;
@@ -826,6 +960,11 @@
       if (role) setRoomRole(role.dataset.roomRole, role.dataset.role);
     });
 
+    ui.roomMuted.addEventListener('click', (event) => {
+      const mute = event.target.closest('[data-room-mute]');
+      if (mute) toggleRoomMute(mute.dataset.roomMute, false);
+    });
+
     ui.imageBtn.addEventListener('click', () => ui.imageFile.click());
     ui.imageFile.addEventListener('change', async () => {
       const file = ui.imageFile.files && ui.imageFile.files[0];
@@ -854,9 +993,17 @@
         deleteMessage(del.dataset.delete);
         return;
       }
+      const pin = event.target.closest('[data-pin-toggle]');
+      if (pin) {
+        togglePinMessage(pin.dataset.pinToggle);
+        return;
+      }
       const rep = event.target.closest('[data-reply]');
       if (rep) startReply(rep.dataset.reply);
     });
+
+    ui.pinnedJump.addEventListener('click', jumpToPinned);
+    ui.pinnedUnpin.addEventListener('click', () => unpinMessage());
 
     ui.adminBtn.addEventListener('click', openAdminPanel);
     ui.adminClose.addEventListener('click', closeAdminPanel);
@@ -869,6 +1016,42 @@
       const fun = event.target.closest('[data-fun]');
       if (fun) runFunCommand(fun.dataset.fun);
     });
+
+    ui.dialogConfirm.addEventListener('click', () => closeDialog('confirm'));
+    ui.dialogCancel.addEventListener('click', () => closeDialog('cancel'));
+    ui.dialogClose.addEventListener('click', () => closeDialog('cancel'));
+    ui.dialogModal.addEventListener('click', (event) => {
+      if (event.target === ui.dialogModal) closeDialog('cancel');
+    });
+    ui.dialogModal.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeDialog('cancel');
+      }
+    });
+    ui.dialogInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        closeDialog('confirm');
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closeDialog('cancel');
+      }
+    });
+
+    ui.newRoomForm.addEventListener('submit', submitNewRoom);
+    ui.newRoomClose.addEventListener('click', closeNewRoomModal);
+    ui.newRoomCancel.addEventListener('click', closeNewRoomModal);
+    ui.newRoomModal.addEventListener('click', (event) => {
+      if (event.target === ui.newRoomModal) closeNewRoomModal();
+    });
+
+    ui.joinRoomForm.addEventListener('submit', submitJoinRoom);
+    ui.joinRoomClose.addEventListener('click', closeJoinRoomModal);
+    ui.joinRoomCancel.addEventListener('click', closeJoinRoomModal);
+    ui.joinRoomModal.addEventListener('click', (event) => {
+      if (event.target === ui.joinRoomModal) closeJoinRoomModal();
+    });
     ui.adminAnnounceBtn.addEventListener('click', sendAnnouncement);
     ui.adminGlobalSend.addEventListener('click', sendGlobalAnnouncement);
     ui.adminGlobalLock.addEventListener('click', () => setGlobalLock(true));
@@ -879,12 +1062,20 @@
       if (select) changeRank(select.dataset.rankUser, select.value);
     });
     ui.adminUsers.addEventListener('click', (event) => {
-      const button = event.target.closest('[data-ban-user]');
-      if (!button) return;
-      const person = state.adminUsers.find((item) => item.username === button.dataset.banUser);
-      if (!person) return;
-      if (person.banned) unbanUser(person.username);
-      else banUser(person.username);
+      const banButton = event.target.closest('[data-ban-user]');
+      if (banButton) {
+        const person = state.adminUsers.find((item) => item.username === banButton.dataset.banUser);
+        if (!person) return;
+        if (person.banned) unbanUser(person.username);
+        else banUser(person.username);
+        return;
+      }
+
+      const verifyButton = event.target.closest('[data-verify-user]');
+      if (verifyButton) {
+        const person = state.adminUsers.find((item) => item.username === verifyButton.dataset.verifyUser);
+        if (person) toggleVerified(person);
+      }
     });
     ui.adminRooms.addEventListener('click', (event) => {
       const button = event.target.closest('[data-admin-room]');
@@ -1135,7 +1326,9 @@
       invite: 'invite',
       modcall: 'modcall',
       'modcall-done': 'mod',
-      away: 'away'
+      away: 'away',
+      friend: 'friend',
+      verified: 'verified'
     };
     return labels[kind] || 'note';
   }
@@ -1310,6 +1503,12 @@
 
     if (kind === 'kick') {
       toast('You were removed from that room.');
+      return;
+    }
+
+    if (kind === 'friend') {
+      showView('friends');
+      setActiveNav('friends');
       return;
     }
 
@@ -1515,6 +1714,7 @@
     renderMessages();
     renderMembers();
     renderStatus();
+    renderPinnedBar();
     renderTabs();
     if (state.view === 'rooms') renderRoomsPanel();
     if (state.view === 'friends') renderFriendsPanel();
@@ -1528,7 +1728,7 @@
       h('div', { class: 'profile-head' + (grad ? ' has-grad' : ''), style: grad },
         avatarNode(person, 'big'),
         h('div', { class: 'profile-head-text' },
-          h('div', { class: 'profile-name' }, person.username, rankBadge(person)),
+          h('div', { class: styledNameClass('profile-name', person) }, person.username, verifyBadge(person), rankBadge(person)),
           h('div', { class: 'profile-sub', text: person.display_name || '' }),
           h('div', {
             class: 'presence ' + (online ? 'on' : 'off'),
@@ -1564,7 +1764,7 @@
     ui.sidebarMe.replaceChildren(
       avatarNode(person, 'small'),
       h('span', { class: 'me-text' },
-        h('strong', {}, person.username, rankBadge(person)),
+        h('strong', { class: styledNameClass('side-name', person) }, person.username, verifyBadge(person), rankBadge(person)),
         h('br'),
         h('small', { text: person.display_name || 'online now' })
       )
@@ -1575,7 +1775,7 @@
       h('div', { class: 'profile-head' + (grad ? ' has-grad' : ''), style: grad },
         avatarNode(person, 'big'),
         h('div', { class: 'profile-head-text' },
-          h('div', { class: 'profile-name' }, person.username, rankBadge(person)),
+          h('div', { class: styledNameClass('profile-name', person) }, person.username, verifyBadge(person), rankBadge(person)),
           h('div', { class: 'profile-sub', text: person.display_name || '' })
         )
       ),
@@ -1654,7 +1854,7 @@
         title: person.display_name || person.username
       },
         h('span', { class: 'dot' + (online ? ' on' : '') }),
-        h('span', { class: 'label', text: person.username }),
+        h('span', { class: styledNameClass('label', person) }, person.username, verifyBadge(person)),
         unread ? h('span', { class: 'badge', text: String(unread) }) : null
       ));
     }
@@ -1671,7 +1871,7 @@
       );
       for (const { link, person } of state.incoming) {
         box.append(h('div', { class: 'request' },
-          h('span', { class: 'label', text: person.username + ' ' }),
+          h('span', { class: styledNameClass('label', person) }, person.username + ' ', verifyBadge(person)),
           h('span', { class: 'request-actions' },
             h('button', { type: 'button', class: 'btn micro', 'data-accept': link.id, text: 'ok' }),
             h('button', { type: 'button', class: 'btn micro', 'data-decline': link.id, text: 'no' })
@@ -1700,7 +1900,10 @@
     if (ui.roomsPanel) ui.roomsPanel.hidden = view !== 'rooms';
     if (ui.friendsPanel) ui.friendsPanel.hidden = view !== 'friends';
     if (view === 'rooms') renderRoomsPanel();
-    if (view === 'friends') renderFriendsPanel();
+    if (view === 'friends') {
+      renderFriendsPanel();
+      markConversationSeen({ kind: 'friend' });
+    }
     setActiveNav(view);
   }
 
@@ -1877,7 +2080,7 @@
       );
       for (const { link, person } of state.incoming) {
         box.append(h('div', { class: 'request' },
-          h('span', { class: 'label', text: person.username + ' ' }),
+          h('span', { class: styledNameClass('label', person) }, person.username + ' ', verifyBadge(person)),
           h('span', { class: 'request-actions' },
             h('button', { type: 'button', class: 'btn micro', 'data-accept': link.id, text: 'ok' }),
             h('button', { type: 'button', class: 'btn micro', 'data-decline': link.id, text: 'no' })
@@ -1896,7 +2099,7 @@
       const online = state.online.has(person.id);
       ui.friendsPanelBody.append(h('div', { class: 'directory-row' },
         h('span', { class: 'dot' + (online ? ' on' : '') }),
-        h('span', { class: 'grow' }, person.username, rankBadge(person)),
+        h('span', { class: styledNameClass('grow', person) }, person.username, verifyBadge(person), rankBadge(person)),
         h('button', {
           type: 'button',
           class: 'btn tiny',
@@ -1987,10 +2190,11 @@
     const line = h('div', { class: 'msg-line' },
       h('span', { class: 'ts', text: '[' + fmtTime(message.created_at) + '] ' }),
       h('span', {
-        class: 'nick',
+        class: styledNameClass('nick', isSystem ? null : person),
         style: 'color:' + (person.color || '#000000'),
         text: '<' + person.username + '> '
       }),
+      isSystem ? null : verifyBadge(person),
       isSystem ? null : rankBadge(person),
       isSystem
         ? h('span', { class: 'body system-body' }, renderBody(rawBody))
@@ -2004,7 +2208,18 @@
       : null;
 
     const tools = [];
+    const room = currentRoom();
     if (!isSystem) {
+      if (room && canModerateRoom(room)) {
+        const pinned = room.pinned_message_id === message.id;
+        tools.push(h('button', {
+          type: 'button',
+          class: 'msg-tool',
+          'data-pin-toggle': message.id,
+          title: pinned ? 'unpin this message' : 'pin this message',
+          text: pinned ? 'unpin' : 'pin'
+        }));
+      }
       tools.push(h('button', {
         type: 'button',
         class: 'msg-tool',
@@ -2023,7 +2238,7 @@
       }
     }
 
-    return h('div', { class: 'msg' + (mine ? ' mine' : '') + (isSystem ? ' system' : '') },
+    return h('div', { class: 'msg' + (mine ? ' mine' : '') + (isSystem ? ' system' : ''), 'data-msg-id': message.id },
       avatarNode(person, 'msg-avatar'),
       h('div', { class: 'msg-main' },
         quote,
@@ -2073,6 +2288,94 @@
 
     if (forceScroll) scrollToBottom(true);
     else scrollToBottom(false);
+  }
+
+  async function togglePinMessage(id) {
+    const room = currentRoom();
+    if (!room || !canModerateRoom(room)) {
+      toast('Room mods only.');
+      return;
+    }
+
+    const messageId = Number(id);
+    const pinned = room.pinned_message_id === messageId;
+
+    if (pinned) {
+      const { error } = await sb.rpc('room_unpin', { p_room: room.id });
+      if (error) { toast(error.message); return; }
+      room.pinned_message_id = null;
+      toast('Message unpinned.');
+    } else {
+      const { error } = await sb.rpc('room_pin', { p_room: room.id, p_message_id: messageId });
+      if (error) { toast(error.message); return; }
+      room.pinned_message_id = messageId;
+      toast('Message pinned.');
+    }
+
+    await loadPinnedMessage();
+    renderMessages();
+  }
+
+  async function unpinMessage() {
+    const room = currentRoom();
+    if (!room || !canModerateRoom(room)) {
+      toast('Room mods only.');
+      return;
+    }
+    if (!room.pinned_message_id) return;
+
+    const { error } = await sb.rpc('room_unpin', { p_room: room.id });
+    if (error) { toast(error.message); return; }
+    room.pinned_message_id = null;
+    toast('Message unpinned.');
+    await loadPinnedMessage();
+    renderMessages();
+  }
+
+  async function loadPinnedMessage() {
+    state.pinnedMessage = null;
+    const room = currentRoom();
+
+    if (room && room.pinned_message_id) {
+      const { data, error } = await sb.from('messages')
+        .select('id, body, sender, created_at')
+        .eq('id', room.pinned_message_id)
+        .eq('room_id', room.id)
+        .maybeSingle();
+      if (!error && data) state.pinnedMessage = data;
+    }
+
+    renderPinnedBar();
+  }
+
+  function renderPinnedBar() {
+    const room = currentRoom();
+    const pinned = state.pinnedMessage;
+
+    if (!room || !pinned) {
+      ui.pinnedBar.hidden = true;
+      ui.pinnedUnpin.hidden = true;
+      return;
+    }
+
+    ui.pinnedBar.hidden = false;
+    ui.pinnedText.textContent = pinned.body;
+    ui.pinnedUnpin.hidden = !canModerateRoom(room);
+  }
+
+  function jumpToPinned() {
+    const pinned = state.pinnedMessage;
+    if (!pinned) return;
+
+    const node = ui.messages.querySelector('[data-msg-id="' + pinned.id + '"]');
+    if (node) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      node.classList.add('pinned-flash');
+      setTimeout(() => node.classList.remove('pinned-flash'), 1600);
+      return;
+    }
+
+    toast('That message is not in the last 100 shown.');
   }
 
   function renderMembers() {
@@ -2126,7 +2429,7 @@
       },
         h('span', { class: 'dot' + (state.online.has(person.id) ? ' on' : '') }),
         avatarNode(person, 'tiny'),
-        h('span', { class: 'label', style: 'color:' + (person.color || '#000000') }, person.username, rankBadge(person))
+        h('span', { class: styledNameClass('label', person), style: 'color:' + (person.color || '#000000') }, person.username, verifyBadge(person), rankBadge(person))
       ));
     }
 
@@ -2284,6 +2587,7 @@
     updateTitle();
 
     await Promise.all([loadRoomMessages(room.id), loadMembers(room.id)]);
+    await loadPinnedMessage();
 
     if (!state.current || state.current.type !== 'room' || state.current.id !== room.id) return;
 
@@ -2653,6 +2957,8 @@
         renderMembers();
         renderHeader();
         applyRoomTalkState();
+        await loadPinnedMessage();
+        renderMessages();
       }
     } catch (error) {
       console.error('[epick-chat] reload rooms', error);
@@ -2735,7 +3041,7 @@
     for (const person of state.searchResults) {
       const status = related.get(person.id);
       ui.friendResults.append(h('div', { class: 'request' },
-        h('span', { class: 'label', text: person.username + ' ' }),
+        h('span', { class: styledNameClass('label', person) }, person.username + ' ', verifyBadge(person)),
         status === 'friend'
           ? h('span', { class: 'muted', text: '(friend)' })
           : status === 'pending'
@@ -2791,32 +3097,49 @@
     renderRequests();
   }
 
-  async function openNewRoomModal() {
-    const name = window.prompt('Room name (1-32 characters):');
-    if (name === null) return;
+  function openNewRoomModal() {
+    ui.newRoomName.value = '';
+    ui.newRoomTopic.value = '';
+    ui.newRoomPrivate.checked = false;
+    ui.newRoomError.hidden = true;
+    ui.newRoomError.textContent = '';
+    ui.newRoomModal.hidden = false;
+    requestAnimationFrame(() => ui.newRoomName.focus());
+  }
 
-    const cleanName = name.trim();
-    if (!cleanName) {
-      window.alert('Room name is required.');
+  function closeNewRoomModal() {
+    ui.newRoomModal.hidden = true;
+  }
+
+  async function submitNewRoom(event) {
+    event.preventDefault();
+
+    const name = ui.newRoomName.value.trim();
+    const topic = ui.newRoomTopic.value.trim();
+    const isPrivate = ui.newRoomPrivate.checked;
+
+    if (!name) {
+      ui.newRoomError.textContent = 'give the room a name first.';
+      ui.newRoomError.hidden = false;
+      ui.newRoomName.focus();
       return;
     }
 
-    const topic = window.prompt('Room topic (optional):') || '';
-    const isPrivate = window.confirm(
-      'Make this room private?\n\nOK = private (invite code required)\nCancel = public room'
-    );
-
+    ui.newRoomSubmit.disabled = true;
     const { data: roomId, error } = await sb.rpc('create_room', {
-      p_name: cleanName,
-      p_topic: topic.trim(),
+      p_name: name,
+      p_topic: topic,
       p_private: isPrivate
     });
+    ui.newRoomSubmit.disabled = false;
 
     if (error) {
-      window.alert(error.message);
+      ui.newRoomError.textContent = error.message;
+      ui.newRoomError.hidden = false;
       return;
     }
 
+    closeNewRoomModal();
     await loadRooms();
     renderRooms();
 
@@ -2824,16 +3147,40 @@
     if (room) await openRoom(room);
   }
 
-  async function openJoinRoomModal() {
-    const code = window.prompt('Enter the private room invite code:');
-    if (!code) return;
+  function openJoinRoomModal() {
+    ui.joinRoomCode.value = '';
+    ui.joinRoomError.hidden = true;
+    ui.joinRoomError.textContent = '';
+    ui.joinRoomModal.hidden = false;
+    requestAnimationFrame(() => ui.joinRoomCode.focus());
+  }
 
-    const { data: roomId, error } = await sb.rpc('join_room_by_code', { p_code: code.trim() });
-    if (error) {
-      window.alert(error.message);
+  function closeJoinRoomModal() {
+    ui.joinRoomModal.hidden = true;
+  }
+
+  async function submitJoinRoom(event) {
+    event.preventDefault();
+
+    const code = ui.joinRoomCode.value.trim();
+    if (!code) {
+      ui.joinRoomError.textContent = 'paste an invite code first.';
+      ui.joinRoomError.hidden = false;
+      ui.joinRoomCode.focus();
       return;
     }
 
+    ui.joinRoomSubmit.disabled = true;
+    const { data: roomId, error } = await sb.rpc('join_room_by_code', { p_code: code });
+    ui.joinRoomSubmit.disabled = false;
+
+    if (error) {
+      ui.joinRoomError.textContent = error.message;
+      ui.joinRoomError.hidden = false;
+      return;
+    }
+
+    closeJoinRoomModal();
     await loadRooms();
     renderRooms();
 
@@ -2846,7 +3193,7 @@
     if (!current || current.type !== 'room') return;
 
     const room = current.room;
-    if (!window.confirm('Leave #' + room.name + '?')) return;
+    if (!await confirmBox('Leave #' + room.name + '?', { title: 'LEAVE ROOM', confirmText: 'leave', danger: true })) return;
 
     const { error } = await sb
       .from('room_members')
@@ -2885,7 +3232,7 @@
 
     const room = current.room;
     if (room.owner !== state.me.id) return;
-    if (!window.confirm('Delete #' + room.name + ' and all of its messages? This cannot be undone.')) return;
+    if (!await confirmBox('Delete #' + room.name + ' and all of its messages? This cannot be undone.', { title: 'DELETE ROOM', confirmText: 'delete', danger: true })) return;
 
     const { error } = await sb.from('rooms').delete().eq('id', room.id);
     if (error) {
@@ -2920,7 +3267,7 @@
     const entry = state.friends.find((item) => item.person.id === current.person.id);
     if (!entry) return;
 
-    if (!window.confirm('Remove ' + current.person.username + ' from your friends?')) return;
+    if (!await confirmBox('Remove ' + current.person.username + ' from your friends?', { title: 'REMOVE FRIEND', confirmText: 'remove', danger: true })) return;
 
     const { error } = await sb.from('friendships').delete().eq('id', entry.link.id);
     if (error) {
@@ -2970,6 +3317,53 @@
     return h('span', { class: 'rank rank-' + rank, text: '(' + rank + ')' });
   }
 
+  const NAME_STYLE_NAMES = [
+    'gold', 'gold-sweep', 'sunset', 'ocean', 'fire', 'candy', 'mint', 'violet',
+    'chrome', 'blood', 'rainbow', 'rainbow-sweep', 'aurora', 'neon', 'comet'
+  ];
+
+  const NAME_STYLE_LABELS = {
+    '': 'use my avatar colour',
+    gold: '24k gold',
+    'gold-sweep': 'gold sweep',
+    sunset: 'sunset',
+    ocean: 'ocean',
+    fire: 'fire',
+    candy: 'candy',
+    mint: 'mint',
+    violet: 'violet',
+    chrome: 'chrome',
+    blood: 'blood',
+    rainbow: 'rainbow',
+    'rainbow-sweep': 'rainbow sweep',
+    aurora: 'aurora',
+    neon: 'neon',
+    comet: 'comet'
+  };
+
+  function styledNameClass(base, person) {
+    const style = person && person.name_style;
+    if (typeof style !== 'string') return base;
+    return NAME_STYLE_NAMES.indexOf(style) === -1 ? base : base + ' name-style-' + style;
+  }
+
+  function isVerified(person) {
+    return Boolean(person) && person.verified === true && person.show_verified !== false;
+  }
+
+  function verifyBadge(person) {
+    if (!isVerified(person)) return null;
+    const badge = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    badge.setAttribute('viewBox', '0 0 16 16');
+    badge.setAttribute('width', '13');
+    badge.setAttribute('height', '13');
+    badge.setAttribute('class', 'verified-badge');
+    badge.setAttribute('role', 'img');
+    badge.setAttribute('aria-label', 'verified user');
+    badge.innerHTML = '<circle cx="8" cy="8" r="7" fill="#1f9bf0" stroke="#0d6dbf" stroke-width="0.9"/><path d="M6.9 10.9 4.2 8.2l1.4-1.4 1.3 1.3 3.4-3.6 1.5 1.3z" fill="#ffffff"/>';
+    return badge;
+  }
+
   function openProfileEditor() {
     const person = state.profile;
     if (!person) return;
@@ -2981,7 +3375,9 @@
       avatar_url: person.avatar_url || '',
       banner_url: person.banner_url || '',
       grad_from: person.grad_from || '',
-      grad_to: person.grad_to || ''
+      grad_to: person.grad_to || '',
+      name_style: NAME_STYLE_NAMES.indexOf(person.name_style) === -1 ? '' : person.name_style,
+      show_verified: person.show_verified !== false
     };
 
     ui.profileDisplay.value = state.editor.display_name;
@@ -3010,6 +3406,20 @@
     );
 
     ui.profileBannerPreview.setAttribute('style', bannerStyle(editor.banner_url));
+
+    if (ui.profileNameStyle.options.length === 0) {
+      for (const key of Object.keys(NAME_STYLE_LABELS)) {
+        ui.profileNameStyle.append(h('option', { value: key, text: NAME_STYLE_LABELS[key] }));
+      }
+    }
+    ui.profileNameStyle.value = editor.name_style;
+    ui.profileNamePreview.replaceChildren(
+      h('span', {
+        class: editor.name_style ? 'name-style-' + editor.name_style : '',
+        style: editor.name_style ? null : 'color:#ffffff'
+      }, state.profile.username)
+    );
+    ui.profileVerifiedShow.checked = editor.show_verified;
 
     ui.profileColors.replaceChildren(
       ...AVATAR_COLORS.map((color) => h('button', {
@@ -3139,7 +3549,9 @@
         avatar_url: editor.avatar_url || null,
         banner_url: editor.banner_url || null,
         grad_from: editor.grad_from || null,
-        grad_to: editor.grad_to || null
+        grad_to: editor.grad_to || null,
+        name_style: NAME_STYLE_NAMES.indexOf(editor.name_style) === -1 ? null : editor.name_style,
+        show_verified: Boolean(editor.show_verified)
       })
       .eq('id', state.me.id)
       .select()
@@ -3268,7 +3680,7 @@
       const role = isOwner ? 'owner' : (person.room_role || 'member');
       const row = h('div', { class: 'admin-user' },
         avatarNode(person, 'tiny'),
-        h('span', { class: 'admin-name', text: person.username }),
+        h('span', { class: styledNameClass('admin-name', person) }, person.username, verifyBadge(person)),
         h('span', { class: 'room-role', text: role }),
         person.muted ? h('span', { class: 'ban-mark', text: 'muted' }) : null
       );
@@ -3307,6 +3719,35 @@
 
     if (!sorted.length) {
       ui.roomMembers.append(h('div', { class: 'muted tiny-pad', text: 'no members loaded' }));
+    }
+
+    renderRoomMutedList();
+  }
+
+  function renderRoomMutedList() {
+    const room = currentRoom();
+    ui.roomMuted.replaceChildren();
+
+    if (!room) {
+      ui.roomMutedSection.hidden = true;
+      return;
+    }
+
+    const muted = state.members.filter((person) => person.muted);
+    ui.roomMutedSection.hidden = muted.length === 0;
+
+    for (const person of muted) {
+      ui.roomMuted.append(h('div', { class: 'admin-user' },
+        avatarNode(person, 'tiny'),
+        h('span', { class: styledNameClass('admin-name', person) }, person.username, verifyBadge(person)),
+        h('button', {
+          type: 'button',
+          class: 'btn micro',
+          'data-room-mute': person.id,
+          'data-muted': '1',
+          text: 'unmute'
+        })
+      ));
     }
   }
 
@@ -3371,7 +3812,7 @@
     const room = currentRoom();
     if (!room) return;
     const person = state.members.find((entry) => entry.id === userId);
-    if (!window.confirm('Remove ' + (person ? person.username : 'this user') + ' from #' + room.name + '?')) return;
+    if (!await confirmBox('Remove ' + (person ? person.username : 'this user') + ' from #' + room.name + '?', { title: 'KICK MEMBER', confirmText: 'kick', danger: true })) return;
 
     const { error } = await sb.rpc('room_kick', { p_room: room.id, p_user: userId });
     if (error) {
@@ -3435,7 +3876,11 @@
       return;
     }
 
-    const reason = window.prompt('What do you need a mod for?');
+    const reason = await promptBox('What do you need a mod for?', {
+      title: 'MODCALL',
+      confirmText: 'send',
+      input: { placeholder: 'someone is being weird, the room is broken, ...', maxLength: 200, required: true }
+    });
     if (reason === null) return;
     const text = reason.trim();
     if (!text) return;
@@ -3539,7 +3984,7 @@
   async function deleteMessage(messageId) {
     if (!state.current) return;
     const table = state.current.type === 'room' ? 'messages' : 'dm_messages';
-    if (!window.confirm('Delete this message?')) return;
+    if (!await confirmBox('Delete this message?', { title: 'DELETE MESSAGE', confirmText: 'delete', danger: true })) return;
 
     const { error } = await sb.from(table).delete().eq('id', messageId);
     if (error) {
@@ -3623,8 +4068,8 @@
     }
 
     if (name === 'help') {
-      toast('/me /shrug /tableflip /unflip /roll /coinflip /8ball /users /whois /stats /color /clear /modcall /report /help' +
-        (isStaff() ? ' /purge /topic' : '') +
+      toast('/me /shrug /tableflip /unflip /roll /coinflip /8ball /users /whois /stats /color /clear /modcall /report /roominfo /help' +
+        (isStaff() ? ' /purge /topic /pin /unpin' : '') +
         (isAdmin() ? ' /announce /global /globallock /globalunlock /globalslow /ban /unban /resolve' : ''));
       return true;
     }
@@ -3635,7 +4080,7 @@
       const target = bits.shift();
       if (!target) { toast('usage: /ban username reason'); return true; }
       const reason = bits.join(' ');
-      if (!window.confirm('Ban ' + target + '?')) return true;
+      if (!await confirmBox('Ban ' + target + '?', { title: 'BAN USER', confirmText: 'ban', danger: true })) return true;
       const { error } = await sb.rpc('ban_user', {
         p_username: target,
         p_reason: reason
@@ -3660,7 +4105,7 @@
       if (!isStaff()) { toast('Staff only.'); return true; }
       if (!state.current || state.current.type !== 'room') { toast('Open a room first.'); return true; }
       const count = Math.min(100, Math.max(1, parseInt(rest, 10) || 10));
-      if (!window.confirm('Delete the last ' + count + ' messages in this room?')) return true;
+      if (!await confirmBox('Delete the last ' + count + ' messages in this room?', { title: 'PURGE MESSAGES', confirmText: 'purge', danger: true })) return true;
       const { data, error } = await sb.rpc('purge_room', {
         p_room: state.current.id,
         p_count: count
@@ -3669,6 +4114,37 @@
       toast('Deleted ' + (data === null ? count : data) + ' messages.');
       await loadRoomMessages(state.current.id);
       renderMessages(true);
+      return true;
+    }
+
+    if (name === 'pin') {
+      if (!state.current || state.current.type !== 'room') { toast('Open a room first.'); return true; }
+      const room = state.current.room;
+      if (!canModerateRoom(room)) { toast('Room mods only.'); return true; }
+      const latest = [...state.messages].reverse().find((message) => message.sender);
+      if (!latest) { toast('no messages to pin.'); return true; }
+      if (room.pinned_message_id === Number(latest.id)) {
+        toast('that message is already pinned. use /unpin to remove it.');
+        return true;
+      }
+      await togglePinMessage(latest.id);
+      return true;
+    }
+
+    if (name === 'unpin') {
+      if (!state.current || state.current.type !== 'room') { toast('Open a room first.'); return true; }
+      if (!canModerateRoom(state.current.room)) { toast('Room mods only.'); return true; }
+      await unpinMessage();
+      return true;
+    }
+
+    if (name === 'roominfo') {
+      if (!state.current || state.current.type !== 'room') { toast('Open a room first.'); return true; }
+      const room = state.current.room;
+      const members = state.roomCounts.get(room.id) || 0;
+      const shown = state.messages.length;
+      const since = room.created_at ? new Date(room.created_at).toLocaleDateString() : 'unknown';
+      toast('#' + room.name + ' | ' + members + ' members | ' + shown + ' messages loaded | created ' + since);
       return true;
     }
 
@@ -3711,9 +4187,10 @@
     if (name === 'globallock' || name === 'globalunlock') {
       if (!isAdmin()) { toast('Admins only.'); return true; }
       const locked = name === 'globallock';
-      if (!window.confirm(locked
+      if (!await confirmBox(locked
         ? 'Lock every room so only room owners and staff can talk?'
-        : 'Unlock every room so everyone can talk again?')) return true;
+        : 'Unlock every room so everyone can talk again?',
+        { title: locked ? 'LOCK EVERY ROOM' : 'UNLOCK EVERY ROOM', confirmText: locked ? 'lock all' : 'unlock all', danger: locked })) return true;
       const { error } = await sb.rpc('global_lock', { p_locked: locked });
       if (error) { toast(error.message); return true; }
       await loadRooms();
@@ -3911,7 +4388,7 @@
   async function loadAdminUsers() {
     const { data, error } = await sb
       .from('profiles')
-      .select('id, username, display_name, rank, color, avatar_url, banned, ban_reason')
+      .select('id, username, display_name, rank, color, avatar_url, banned, ban_reason, verified, show_verified, name_style')
       .order('username', { ascending: true })
       .limit(200);
 
@@ -3969,7 +4446,7 @@
 
       const row = h('div', { class: 'admin-user' },
         avatarNode(person, 'tiny'),
-        h('span', { class: 'admin-name', text: person.username }),
+        h('span', { class: styledNameClass('admin-name', person) }, person.username, verifyBadge(person)),
         rankBadge(person),
         person.banned ? h('span', { class: 'ban-mark', text: 'banned' }) : null,
         select
@@ -3990,6 +4467,13 @@
           text: person.banned ? 'unban' : 'ban'
         }));
       }
+
+      row.append(h('button', {
+        type: 'button',
+        class: 'btn micro' + (person.verified ? ' primary' : ''),
+        'data-verify-user': person.username,
+        text: person.verified ? 'unverify' : 'verify'
+      }));
 
       ui.adminUsers.append(row);
     }
@@ -4037,8 +4521,25 @@
     renderAll();
   }
 
+  async function toggleVerified(person) {
+    const { error } = await sb.rpc('verify_user', {
+      p_username: person.username,
+      p_verified: !person.verified
+    });
+    if (error) {
+      toast(error.message);
+      return;
+    }
+    toast(person.verified ? person.username + ' is no longer verified.' : person.username + ' is now verified.');
+    await loadAdminUsers();
+  }
+
   async function banUser(username) {
-    const reason = window.prompt('Reason for banning ' + username + '?', '');
+    const reason = await promptBox('Reason for banning ' + username + '?', {
+      title: 'BAN ' + username.toUpperCase(),
+      confirmText: 'ban',
+      input: { placeholder: 'keep it short and factual', maxLength: 200 }
+    });
     if (reason === null) return;
 
     const { error } = await sb.rpc('ban_user', {
@@ -4064,7 +4565,7 @@
   }
 
   async function adminDeleteRoom(roomId) {
-    if (!window.confirm('Delete this room and all of its messages?')) return;
+    if (!await confirmBox('Delete this room and all of its messages?', { title: 'DELETE ROOM', confirmText: 'delete', danger: true })) return;
     const { error } = await sb.rpc('admin_delete_room', { p_room: roomId });
     if (error) {
       toast(error.message);
@@ -4135,7 +4636,11 @@
     const question = locked
       ? 'Lock every room so only room owners and staff can talk?'
       : 'Unlock every room so everyone can talk again?';
-    if (!window.confirm(question)) return;
+    if (!await confirmBox(question, {
+      title: locked ? 'LOCK EVERY ROOM' : 'UNLOCK EVERY ROOM',
+      confirmText: locked ? 'lock all' : 'unlock all',
+      danger: locked
+    })) return;
 
     const { error } = await sb.rpc('global_lock', { p_locked: locked });
     if (error) {
@@ -4183,7 +4688,11 @@
       await navigator.clipboard.writeText(text);
       toast('Copied to clipboard.');
     } catch (_) {
-      window.prompt('Copy this:', text);
+      promptBox('Your browser blocked the clipboard. The text below is selected for you:', {
+        title: 'COPY INVITE CODE',
+        confirmText: 'done',
+        input: { value: text, maxLength: 2000, readOnly: true }
+      });
     }
   }
 

@@ -7,12 +7,14 @@ The design is built the way a webmaster of 2000-2001 would actually build it: HT
 ## What it does
 
 - Username/password accounts; no email address is asked for or shown anywhere
-- Custom profiles: display name, bio, avatar colour, avatar image, banner, and a two-colour profile gradient
+- Custom profiles: display name, bio, avatar colour, avatar image, banner, a two-colour profile gradient, and 15 gradient name styles (animated rainbow, aurora, neon, gold, and more)
+- Verified badges: staff can verify a member, and the member can toggle the badge on their name
 - Friends: search users, send requests, accept/decline, remove friends
 - Direct messages between friends
+- Friend requests and accepted requests show up in the notification bell
 - Public rooms anyone can join
 - Private rooms with an invite code
-- Room owner tools: rename, topic, welcome line, room photo, accent colour, chat font, slowmode, who-can-talk mode, room mods, mute, and kick
+- Room owner tools: rename, topic, welcome line, room photo, accent colour, chat font, slowmode, who-can-talk mode, room mods, mute (with an unmute list in room settings), kick, and pinned messages
 - Modcalls: anyone can call a mod into a room, staff see the open queue in the admin panel
 - Notification bell: mentions, new DMs, room changes, kicks/mutes, and a "while you were away" summary
 - Optional desktop alerts for mentions, DMs, and modcalls while the tab is hidden
@@ -24,7 +26,7 @@ The design is built the way a webmaster of 2000-2001 would actually build it: HT
 - Admin panel for staff: change ranks, ban/unban, announce, a **GLOBAL** section (broadcast to every room, lock/unlock every room, set slowmode everywhere), delete rooms, fun buttons
 - Bans: admins can stop a user from chatting, with a reason shown to that user
 - Announcements only render as system notices when the database marks them as system; typing `[ANNOUNCEMENT]` does nothing special
-- Chat commands such as `/me`, `/roll`, `/purge`, `/topic`, `/ban`, `/unban`, `/announce`, `/global`, `/globallock`, `/globalslow`, `/modcall`
+- Chat commands such as `/me`, `/roll`, `/purge`, `/topic`, `/pin`, `/unpin`, `/roominfo`, `/ban`, `/unban`, `/announce`, `/global`, `/globallock`, `/globalslow`, `/modcall`
 - Chat image embeds show a content warning and a **view anyway** button first
 - Chat history stored in Postgres, so Render redeploys do not wipe it
 - Row Level Security: users can only read rooms/DMs they belong to
@@ -58,6 +60,7 @@ After that, the owner and co-owners can change ranks in the admin panel. Bans fo
 | `/roll 2d6`, `/coinflip`, `/8ball question` | everyone | dice, coin, magic 8-ball |
 | `/help` | everyone | list commands |
 | `/topic new topic` | room owner, room mod, staff | change the room topic |
+| `/pin`, `/unpin` | room owner, room mod, staff | pin or unpin the latest message in the room |
 | `/purge 10` | staff | delete the last N messages in the room |
 | `/announce text` | admins | post a system announcement in the current room |
 | `/global text` | admins | post a system announcement in every room |
@@ -75,6 +78,7 @@ After that, the owner and co-owners can change ranks in the admin panel. Bans fo
 | `/report username reason` | everyone | report a user to the mods |
 | `/resolve id` | staff | close an open modcall |
 | `/users`, `/whois username`, `/stats` | everyone | room and user info |
+| `/roominfo` | everyone | member count and messages loaded in this room |
 | `/color #ff0000` | everyone | change your name colour |
 | `/clear` | everyone | clear your local message view |
 
@@ -87,9 +91,9 @@ Open a room and press **settings** (room owner or staff only). The room settings
 - accent colour and chat font (courier, serif, comic sans, typewriter)
 - who can talk: everyone, room mods only, or owner only
 - slowmode in seconds
-- members: mute, promote to room mod, or kick
+- members: mute (with a muted list you can unmute from), promote to room mod, or kick
 
-Room mods can use `/kick`, `/mute`, `/unmute`, `/invite`, and `/slowmode`, but cannot rename the room or change who can talk. A kick removes the person right away; public rooms auto-join when opened, so a kicked user can walk back into a public room. The notification bell shows mentions (`@username`), new DMs, room setting changes, kicks, mutes, and a summary of what happened while you were offline.
+Room mods can use `/kick`, `/mute`, `/unmute`, `/invite`, and `/slowmode`, but cannot rename the room or change who can talk. A kick removes the person right away; public rooms auto-join when opened, so a kicked user can walk back into a public room. The notification bell shows mentions (`@username`), new DMs, friend requests (and accepted requests), room setting changes, kicks, mutes, and a summary of what happened while you were offline. Room mods and staff can pin one message per room; the pinned line sits at the top of the chat with a jump link, and other room members are notified.
 
 Staff also get a **GLOBAL** section in the admin panel. It can broadcast a system line into every room, lock every room so only room owners and staff can talk, and push a slowmode value to every room at once.
 
@@ -213,7 +217,7 @@ Manual route instead of the Blueprint: **New + -> Static Site**, connect the rep
 
 - Supabase free projects pause after a period of inactivity. They resume when opened; data is not lost.
 - Realtime is enabled by `schema.sql`. If messages only appear after a refresh, check **Database -> Replication** and make sure the `messages`, `dm_messages`, `friendships`, `rooms`, `room_members`, and `profiles` tables are in the `supabase_realtime` publication.
-- **Upgrading an existing install:** re-run the whole `supabase/schema.sql` in the SQL Editor. It adds `bio`, `avatar_url`, `banner_url`, `grad_from`, `grad_to`, `rank`, `reply_to`, `reply_snippet`, the ban columns (`banned`, `ban_reason`, `banned_at`, `banned_by`), the `epick` storage bucket and its policies, the room and modcall RPCs, and the global RPCs (`global_announce`, `global_lock`, `global_slowmode`). Without it, profiles, gradients, images, ranks, replies, bans, and admin actions will fail with a "column/schema cache" error.
+- **Upgrading an existing install:** re-run the whole `supabase/schema.sql` in the SQL Editor. It adds `bio`, `avatar_url`, `banner_url`, `grad_from`, `grad_to`, `name_style`, `verified`, `show_verified`, `pinned_message_id`, `rank`, `reply_to`, `reply_snippet`, the ban columns (`banned`, `ban_reason`, `banned_at`, `banned_by`), the `epick` storage bucket and its policies, the room and modcall RPCs, the pin RPCs (`room_pin`, `room_unpin`), the verify RPC (`verify_user`), the friendships notify trigger, and the global RPCs (`global_announce`, `global_lock`, `global_slowmode`). Without it, profiles, gradients, name styles, verified badges, pinned messages, friend-request notifications, images, ranks, replies, bans, and admin actions will fail with a "column/schema cache" error.
 - If image uploads fail, confirm the `epick` bucket exists and is public, then re-run the storage section of `schema.sql`.
 - The layout is deliberate: an HTML table skeleton, blue gradient box headers, sidebar and profile boxes, a status bar, Verdana/Courier type, and tiny underlined links. The mobile fallback flips the table cells to blocks and hides the sidebar behind a toggle.
 - Desktop alerts are a browser permission, not a server feature. The on/off choice is stored in `localStorage` under `epickchat:alerts` and only fires while the tab is hidden.

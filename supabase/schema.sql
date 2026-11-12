@@ -1425,3 +1425,136 @@ begin
 end;
 $$;
 grant execute on function public.global_slowmode(integer) to authenticated;
+
+alter table public.rooms add column if not exists pinned_message_id bigint;
+
+create or replace function public.room_pin(p_room uuid, p_message_id bigint)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  msg_text text;
+  room_name text;
+begin
+  if not public.can_moderate_room(p_room) then
+    raise exception 'Room mods only';
+  end if;
+
+  select body into msg_text
+  from public.messages
+  where id = p_message_id and room_id = p_room;
+
+  if msg_text is null then
+    raise exception 'That message is not in this room';
+  end if;
+
+  update public.rooms
+  set pinned_message_id = p_message_id,
+      updated_at = now()
+  where id = p_room;
+
+  select name into room_name from public.rooms where id = p_room;
+
+  insert into public.notifications (user_id, kind, body, room_id, actor)
+  select rm.user_id, 'room',
+    '#' || room_name || ' pinned a message: ' || left(msg_text, 120),
+    p_room, auth.uid()
+  from public.room_members rm
+  where rm.room_id = p_room and rm.user_id <> auth.uid();
+end;
+$$;
+grant execute on function public.room_pin(uuid, bigint) to authenticated;
+
+create or replace function public.room_unpin(p_room uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.can_moderate_room(p_room) then
+    raise exception 'Room mods only';
+  end if;
+
+  update public.rooms
+  set pinned_message_id = null,
+      updated_at = now()
+  where id = p_room;
+end;
+$$;
+grant execute on function public.room_unpin(uuid) to authenticated;
+
+create or replace function public.notify_friendship()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  other_name text;
+begin
+  if tg_op = 'INSERT' and new.status = 'pending' then
+    select username into other_name from public.profiles where id = new.requester;
+    insert into public.notifications (user_id, kind, body, actor)
+    values (new.addressee, 'friend', coalesce(other_name, 'someone') || ' sent you a friend request', new.requester);
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' and old.status = 'pending' and new.status = 'accepted' then
+    select username into other_name from public.profiles where id = new.addressee;
+    insert into public.notifications (user_id, kind, body, actor)
+    values (new.requester, 'friend', coalesce(other_name, 'someone') || ' accepted your friend request', new.addressee);
+    return new;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists friendships_notify on public.friendships;
+create trigger friendships_notify
+  after insert or update on public.friendships
+  for each row execute function public.notify_friendship();
+
+alter table public.profiles add column if not exists verified boolean not null default false;
+alter table public.profiles add column if not exists show_verified boolean not null default true;
+alter table public.profiles add column if not exists name_style text;
+grant update (name_style, show_verified) on public.profiles to authenticated;
+
+create or replace function public.verify_user(p_username text, p_verified boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target uuid;
+  actor_name text;
+begin
+  if not public.is_staff() then
+    raise exception 'Staff only';
+  end if;
+
+  select id into target from public.profiles where lower(username) = lower(trim(p_username));
+  if target is null then
+    raise exception 'No such user';
+  end if;
+
+  update public.profiles
+  set verified = coalesce(p_verified, false)
+  where id = target;
+
+  select username into actor_name from public.profiles where id = auth.uid();
+
+  insert into public.notifications (user_id, kind, body, actor)
+  values (
+    target,
+    'verified',
+    coalesce(actor_name, 'staff') || (case when coalesce(p_verified, false) then ' verified you' else ' removed your verification' end),
+    auth.uid()
+  );
+end;
+$$;
+grant execute on function public.verify_user(text, boolean) to authenticated;
