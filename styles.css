@@ -695,7 +695,10 @@ select.rank-select { width: auto; }
 .name-style-gold, .name-style-gold-sweep, .name-style-sunset, .name-style-ocean, .name-style-fire,
 .name-style-candy, .name-style-mint, .name-style-violet, .name-style-chrome, .name-style-blood,
 .name-style-rainbow, .name-style-rainbow-sweep, .name-style-aurora, .name-style-neon,
-.name-style-comet {
+.name-style-comet, .name-style-trans, .name-style-trans-sweep, .name-style-gay, .name-style-lesbian,
+.name-style-bi, .name-style-pan, .name-style-ace, .name-style-aro, .name-style-nonbinary,
+.name-style-genderfluid, .name-style-genderqueer, .name-style-agender, .name-style-intersex,
+.name-style-progress, .name-style-bigender {
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -703,7 +706,7 @@ select.rank-select { width: auto; }
 }
 
 .name-style-gold-sweep, .name-style-rainbow-sweep, .name-style-aurora, .name-style-neon,
-.name-style-comet {
+.name-style-comet, .name-style-trans-sweep, .name-style-progress {
   background-size: 220% 100%;
   animation: name-shine 2.6s linear infinite;
 }
@@ -780,6 +783,79 @@ select.rank-select { width: auto; }
   background-image: linear-gradient(100deg,
     #4aa8ff 0, #9fd7ff 18%, #2d7fd6 32%, #9fd7ff 48%,
     #4aa8ff 66%, #ffffff 82%, #7fd4ff 100%);
+}
+
+.name-style-trans {
+  background-image: linear-gradient(90deg,
+    #5bcefa 0, #f5a9b8 28%, #d8d8d8 50%, #f5a9b8 72%, #5bcefa 100%);
+}
+
+.name-style-trans-sweep {
+  background-image: linear-gradient(100deg,
+    #5bcefa 0, #f5a9b8 17%, #d8d8d8 33%, #f5a9b8 50%,
+    #5bcefa 67%, #f5a9b8 84%, #5bcefa 100%);
+}
+
+.name-style-gay {
+  background-image: linear-gradient(90deg,
+    #ff0018 0, #ffa52c 19%, #ffff41 37%, #008018 55%, #0000f9 74%, #86007d 92%);
+}
+
+.name-style-lesbian {
+  background-image: linear-gradient(90deg,
+    #d52d00 0, #ef7627 18%, #ff9a56 36%, #d8d8d8 50%,
+    #d162a4 64%, #b55694 81%, #a30262 100%);
+}
+
+.name-style-bi {
+  background-image: linear-gradient(90deg, #d60270 0, #9b4f96 50%, #0038a8 100%);
+}
+
+.name-style-pan {
+  background-image: linear-gradient(90deg, #ff218c 0, #ffd800 50%, #21b1ff 100%);
+}
+
+.name-style-ace {
+  background-image: linear-gradient(90deg, #000000 0, #a3a3a3 35%, #d8d8d8 55%, #800080 100%);
+}
+
+.name-style-aro {
+  background-image: linear-gradient(90deg,
+    #3da542 0, #a8d5a8 22%, #d8d8d8 42%, #aaaaaa 62%, #3a3a3a 100%);
+}
+
+.name-style-nonbinary {
+  background-image: linear-gradient(90deg,
+    #fff433 0, #d8d8d8 33%, #9c59d1 66%, #2c2c2c 100%);
+}
+
+.name-style-genderfluid {
+  background-image: linear-gradient(90deg,
+    #ff75a2 0, #d8d8d8 19%, #be18d6 38%, #000000 57%, #303ffe 78%, #ff75a2 100%);
+}
+
+.name-style-genderqueer {
+  background-image: linear-gradient(90deg, #b07dd6 0, #d8d8d8 50%, #4a8120 100%);
+}
+
+.name-style-agender {
+  background-image: linear-gradient(90deg,
+    #000000 0, #7e7e7e 25%, #d8d8d8 50%, #7e7e7e 75%, #000000 100%);
+}
+
+.name-style-intersex {
+  background-image: linear-gradient(90deg, #ffd800 0, #ffd800 42%, #ae54d9 68%, #ffd800 100%);
+}
+
+.name-style-progress {
+  background-image: linear-gradient(100deg,
+    #784f17 0, #000000 17%, #ff0018 28%, #ffa52c 36%, #ffff41 44%,
+    #008018 53%, #0000f9 62%, #86007d 71%, #d60270 82%, #784f17 100%);
+}
+
+.name-style-bigender {
+  background-image: linear-gradient(90deg,
+    #c479a2 0, #eda5cd 17%, #d5c7e8 33%, #d8d8d8 50%, #d5c7e8 67%, #9ac7e8 83%, #6d82d1 100%);
 }
 
 .name-preview {

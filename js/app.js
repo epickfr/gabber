@@ -141,7 +141,8 @@
     typewriter: '"Lucida Console", Monaco, monospace'
   };
   const ROOM_ACCENTS = ['#000080', '#7a1f1f', '#0a5d2a', '#5b2a86', '#006b6b', '#333333'];
-  const GRAD_COLORS = ['#1b4c8c', '#2b5c9e', '#4f86c6', '#7a2fbf', '#b8860b', '#c0392b', '#0a7d32', '#008b8b', '#333333', '#d2691e'];
+  const GRAD_COLORS = ['#1b4c8c', '#2b5c9e', '#4f86c6', '#7a2fbf', '#b8860b', '#c0392b', '#0a7d32', '#008b8b', '#333333', '#d2691e',
+    '#ffffff', '#c9d7e5', '#8a97a5', '#4b5b6b', '#000000'];
   const AUTH_EMAIL_DOMAIN = '@epick.local';
   const authEmail = (username) => String(username || '').trim().toLowerCase() + AUTH_EMAIL_DOMAIN;
 
@@ -3426,7 +3427,10 @@
 
   const NAME_STYLE_NAMES = [
     'gold', 'gold-sweep', 'sunset', 'ocean', 'fire', 'candy', 'mint', 'violet',
-    'chrome', 'blood', 'rainbow', 'rainbow-sweep', 'aurora', 'neon', 'comet'
+    'chrome', 'blood', 'rainbow', 'rainbow-sweep', 'aurora', 'neon', 'comet',
+    'trans', 'trans-sweep', 'gay', 'lesbian', 'bi', 'pan', 'ace', 'aro',
+    'nonbinary', 'genderfluid', 'genderqueer', 'agender', 'intersex', 'progress',
+    'bigender'
   ];
 
   const NAME_STYLE_LABELS = {
@@ -3445,7 +3449,22 @@
     'rainbow-sweep': 'rainbow sweep',
     aurora: 'aurora',
     neon: 'neon',
-    comet: 'comet'
+    comet: 'comet',
+    trans: 'trans flag',
+    'trans-sweep': 'trans sweep',
+    gay: 'gay flag',
+    lesbian: 'lesbian flag',
+    bi: 'bi pride',
+    pan: 'pan pride',
+    ace: 'asexual pride',
+    aro: 'aromantic pride',
+    nonbinary: 'non-binary',
+    genderfluid: 'genderfluid',
+    genderqueer: 'genderqueer',
+    agender: 'agender',
+    intersex: 'intersex',
+    progress: 'progress pride',
+    bigender: 'bigender flag'
   };
 
   function styledNameClass(base, person) {
